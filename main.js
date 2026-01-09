@@ -1,5 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
 
 
  
@@ -32,6 +34,15 @@ camera.position.set(0, 1.6, 0); // human eye height
 scene.add(camera);
 
  
+// DESKTOP DEBUG CONTROLS
+ 
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+
+
+ 
 // DEBUG REFERENCE GEOMETRY
  
 // Floor grid (1 unit = 1 meter)
@@ -55,6 +66,7 @@ window.addEventListener('resize', () => {
 // XR RENDER LOOP
  
 renderer.setAnimationLoop(() => {
+  controls.update();
   renderer.render(scene, camera);
 });
 
@@ -139,3 +151,40 @@ scene.add(new THREE.Mesh(
   new THREE.SphereGeometry(1, 16, 16),
   new THREE.MeshBasicMaterial({ color: 0xffffff })
 ));
+
+ 
+// SCALE DEBUG PROBES
+
+// Giant reference sphere (1000 units radius)
+const probeSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1000, 32, 32),
+  new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 })
+);
+scene.add(probeSphere);
+
+// Directional line to horizon
+const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(0, 0, horizonRadiusUnits)
+]);
+scene.add(new THREE.Line(lineGeometry, lineMaterial));
+
+
+ 
+// DEBUG VISUAL SCALE OVERRIDE
+ 
+let debugScale = 1.0;
+
+// TEMP: scale horizon visually
+horizonRing.scale.setScalar(debugScale);
+
+// Keyboard debug (desktop only)
+window.addEventListener('keydown', (e) => {
+  if (e.key === '+') debugScale *= 1.2;
+  if (e.key === '-') debugScale /= 1.2;
+
+  horizonRing.scale.setScalar(debugScale);
+
+  console.log("DEBUG horizon scale:", debugScale);
+});
