@@ -1,11 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
-
-
-///////////////////////////////
-// BASIC RENDERER SETUP
-///////////////////////////////
+ 
+// RENDERER
+ 
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -14,60 +12,35 @@ renderer.xr.enabled = true;
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
-///////////////////////////////
+ 
 // SCENE & CAMERA
-///////////////////////////////
+ 
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-// IMPORTANT: sane clip planes for large-scale VR
 const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
-  10,      // near
-  5e5      // far
+  0.01,
+  100
 );
 
+// Player is fixed at origin in render space
+camera.position.set(0, 1.6, 0);
 scene.add(camera);
 
-///////////////////////////////
-// SAFE DESKTOP DEBUG CAMERA (NO MODULES)
-///////////////////////////////
-
-window.addEventListener('keydown', (e) => {
-  const step = 100;
-
-  if (e.key === 'w') camera.position.z -= step;
-  if (e.key === 's') camera.position.z += step;
-  if (e.key === 'a') camera.position.x -= step;
-  if (e.key === 'd') camera.position.x += step;
-  if (e.key === 'q') camera.position.y += step;
-  if (e.key === 'e') camera.position.y -= step;
-
-  camera.lookAt(0, 0, 0);
-
-  console.log("Camera position:", camera.position);
-});
-
-///////////////////////////////
-// DEBUG REFERENCE GEOMETRY
-///////////////////////////////
-
-scene.add(new THREE.GridHelper(100, 10));
-scene.add(new THREE.AxesHelper(10));
-
-///////////////////////////////
+ 
 // PHYSICAL CONSTANTS (SI)
-///////////////////////////////
+ 
 
 const G = 6.67430e-11;
 const c = 299792458;
 const SOLAR_MASS = 1.98847e30;
 
-///////////////////////////////
-// BLACK HOLE PARAMETERS
-///////////////////////////////
+ 
+// BLACK HOLE (PHYSICS SPACE)
+ 
 
 const blackHole = {
   massSolar: 1e6,
@@ -78,24 +51,38 @@ const blackHole = {
 blackHole.massKg = blackHole.massSolar * SOLAR_MASS;
 blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 
-///////////////////////////////
-// VISUAL SCALING
-///////////////////////////////
+ 
+// OBSERVER SETUP (PHYSICS)
+ 
 
-const METERS_TO_UNITS = 1e-6;
-const horizonRadiusUnits = blackHole.rs * METERS_TO_UNITS;
+const PLAYER_PHYSICS_RADIUS = 50 * blackHole.rs;
+const HORIZON_PHYSICS_RADIUS = blackHole.rs;
 
-console.log("Black Hole Mass (kg):", blackHole.massKg);
-console.log("Schwarzschild radius (m):", blackHole.rs);
-console.log("Schwarzschild radius (units):", horizonRadiusUnits);
+ 
+// RENDER MAPPING
+ 
 
-///////////////////////////////
-// EVENT HORIZON VISUALIZATION
-///////////////////////////////
+// How close the horizon feels in VR (meters)
+const HORIZON_RENDER_DISTANCE = 4.0;
+
+// Maps physics radius → render Z offset
+function physicsRadiusToRenderZ(rPhysics) {
+  const deltaRs =
+    (rPhysics - PLAYER_PHYSICS_RADIUS) / blackHole.rs;
+
+  return deltaRs * HORIZON_RENDER_DISTANCE;
+}
+
+ 
+// EVENT HORIZON VISUAL
+ 
+
+const horizonRenderZ =
+  physicsRadiusToRenderZ(HORIZON_PHYSICS_RADIUS);
 
 const horizonGeometry = new THREE.RingGeometry(
-  horizonRadiusUnits * 0.98,
-  horizonRadiusUnits * 1.02,
+  1.0,
+  1.05,
   128
 );
 
@@ -104,45 +91,46 @@ const horizonMaterial = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide
 });
 
-const horizonRing = new THREE.Mesh(horizonGeometry, horizonMaterial);
+const horizonRing = new THREE.Mesh(
+  horizonGeometry,
+  horizonMaterial
+);
+
+// Face the player
 horizonRing.rotation.x = Math.PI / 2;
+horizonRing.position.set(0, 0, horizonRenderZ);
+
 scene.add(horizonRing);
 
-///////////////////////////////
-// PLAYER FIXED POSITION (50 r_s)
-///////////////////////////////
+ 
+// SINGULARITY MARKER (DEBUG)
+ 
 
-const PLAYER_RADIUS_RS = 50;
-const playerRadiusUnits = blackHole.rs * PLAYER_RADIUS_RS * METERS_TO_UNITS;
-
-camera.position.set(0, 1.6, playerRadiusUnits);
-camera.lookAt(0, 0, 0);
-
-///////////////////////////////
-// DEBUG SCALE PROBES
-///////////////////////////////
-
-scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(200, 32, 32),
-  new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 })
-));
-
-scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(10, 16, 16),
+const singularity = new THREE.Mesh(
+  new THREE.SphereGeometry(0.05, 16, 16),
   new THREE.MeshBasicMaterial({ color: 0xffffff })
-));
+);
 
-///////////////////////////////
+singularity.position.set(0, 0, horizonRenderZ - 0.5);
+scene.add(singularity);
+
+ 
+// OPTIONAL ORIENTATION GRID
+ 
+
+scene.add(new THREE.GridHelper(5, 10));
+
+ 
 // RENDER LOOP
-///////////////////////////////
+ 
 
 renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-///////////////////////////////
-// RESIZE HANDLING
-///////////////////////////////
+ 
+// RESIZE
+ 
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -150,11 +138,11 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-const guideLine = new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 1.6, playerRadiusUnits),
-    new THREE.Vector3(0, 0, horizonRadiusUnits)
-  ]),
-  new THREE.LineBasicMaterial({ color: 0xffffff })
-);
-scene.add(guideLine);
+ 
+// DEBUG OUTPUT
+ 
+
+console.log("Black hole mass (kg):", blackHole.massKg);
+console.log("Schwarzschild radius (m):", blackHole.rs);
+console.log("Player radius (r):", PLAYER_PHYSICS_RADIUS);
+console.log("Horizon render Z:", horizonRenderZ);
