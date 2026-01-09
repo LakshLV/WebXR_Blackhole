@@ -23,8 +23,9 @@ const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
   0.01,
-  100
+  20
 );
+
 
 // Player is fixed at origin in render space
 camera.position.set(0, 1.6, 0);
@@ -63,7 +64,7 @@ const HORIZON_PHYSICS_RADIUS = blackHole.rs;
  
 
 // How close the horizon feels in VR (meters)
-const HORIZON_RENDER_DISTANCE = 4.0;
+const HORIZON_RENDER_DISTANCE = 0.08;
 
 // Maps physics radius → render Z offset
 function physicsRadiusToRenderZ(rPhysics) {
