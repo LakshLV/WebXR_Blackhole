@@ -100,8 +100,8 @@ const METERS_TO_UNITS = 1e-6;
 const horizonRadiusUnits = blackHole.rs * METERS_TO_UNITS;
 
 const horizonGeometry = new THREE.RingGeometry(
-  horizonRadiusUnits * 0.995,
-  horizonRadiusUnits * 1.005,
+  horizonRadiusUnits * 0.98,
+  horizonRadiusUnits * 1.02,
   128
 );
 
@@ -116,4 +116,20 @@ const horizonRing = new THREE.Mesh(horizonGeometry, horizonMaterial);
 horizonRing.rotation.x = Math.PI / 2;
 
 scene.add(horizonRing);
+
+ 
+// PLAYER FIXED POSITION (EXTERNAL OBSERVER)
+ 
+
+// Player stays at r = 50 r_s (visual only for now)
+const PLAYER_RADIUS_RS = 50;
+
+// Convert to visual units
+const playerRadiusUnits = blackHole.rs * PLAYER_RADIUS_RS * METERS_TO_UNITS;
+
+// Place player along +Z axis
+camera.position.set(0, 1.6, playerRadiusUnits);
+
+// Look at black hole center
+camera.lookAt(0, 0, 0);
 
