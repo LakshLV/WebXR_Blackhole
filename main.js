@@ -133,3 +133,9 @@ camera.position.set(0, 1.6, playerRadiusUnits);
 // Look at black hole center
 camera.lookAt(0, 0, 0);
 
+
+// A white sphere at the black hole center
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(1, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+));
