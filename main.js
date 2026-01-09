@@ -100,7 +100,7 @@ const horizonGeometry = new THREE.RingGeometry(
 );
 
 const horizonMaterial = new THREE.MeshBasicMaterial({
-  color: 0xff6600,
+  color: 0x00ffff,
   side: THREE.DoubleSide
 });
 
@@ -123,7 +123,7 @@ camera.lookAt(0, 0, 0);
 ///////////////////////////////
 
 scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(1000, 32, 32),
+  new THREE.SphereGeometry(200, 32, 32),
   new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 })
 ));
 
@@ -149,3 +149,12 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+const guideLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 1.6, playerRadiusUnits),
+    new THREE.Vector3(0, 0, horizonRadiusUnits)
+  ]),
+  new THREE.LineBasicMaterial({ color: 0xffffff })
+);
+scene.add(guideLine);
