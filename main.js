@@ -57,3 +57,63 @@ window.addEventListener('resize', () => {
 renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
+
+ 
+// PHYSICAL CONSTANTS (SI)
+ 
+const G = 6.67430e-11;            // m^3 kg^-1 s^-2
+const c = 299792458;              // m/s
+const SOLAR_MASS = 1.98847e30;    // kg
+
+ 
+// BLACK HOLE PARAMETERS
+ 
+const blackHole = {
+  massSolar: 1e6,                 // Configurable
+  massKg: null,
+  rs: null                        // Schwarzschild radius (meters)
+};
+
+// Compute mass in kg
+blackHole.massKg = blackHole.massSolar * SOLAR_MASS;
+
+// Schwarzschild radius
+// r_s = 2GM / c^2
+blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
+
+
+console.log("Black Hole Mass (kg):", blackHole.massKg);
+console.log("Schwarzschild radius (m):", blackHole.rs);
+console.log("Schwarzschild radius (units):", horizonRadiusUnits);
+
+
+ 
+// VISUAL SCALING
+ 
+// 1 unit = 1e6 meters (visual only)
+const METERS_TO_UNITS = 1e-6;
+
+ 
+// EVENT HORIZON VISUALIZATION
+ 
+// Thin ring at r = r_s
+const horizonRadiusUnits = blackHole.rs * METERS_TO_UNITS;
+
+const horizonGeometry = new THREE.RingGeometry(
+  horizonRadiusUnits * 0.995,
+  horizonRadiusUnits * 1.005,
+  128
+);
+
+const horizonMaterial = new THREE.MeshBasicMaterial({
+  color: 0xff6600,
+  side: THREE.DoubleSide
+});
+
+const horizonRing = new THREE.Mesh(horizonGeometry, horizonMaterial);
+
+// Orient ring to face camera (XY plane)
+horizonRing.rotation.x = Math.PI / 2;
+
+scene.add(horizonRing);
+
