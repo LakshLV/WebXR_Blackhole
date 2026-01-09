@@ -1,6 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+
 
 ///////////////////////////////
 // BASIC RENDERER SETUP
@@ -31,12 +32,23 @@ const camera = new THREE.PerspectiveCamera(
 scene.add(camera);
 
 ///////////////////////////////
-// DESKTOP DEBUG CONTROLS (NON-XR ONLY)
+// SAFE DESKTOP DEBUG CAMERA (NO MODULES)
 ///////////////////////////////
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0, 0);
-controls.enableDamping = true;
+window.addEventListener('keydown', (e) => {
+  const step = 100;
+
+  if (e.key === 'w') camera.position.z -= step;
+  if (e.key === 's') camera.position.z += step;
+  if (e.key === 'a') camera.position.x -= step;
+  if (e.key === 'd') camera.position.x += step;
+  if (e.key === 'q') camera.position.y += step;
+  if (e.key === 'e') camera.position.y -= step;
+
+  camera.lookAt(0, 0, 0);
+
+  console.log("Camera position:", camera.position);
+});
 
 ///////////////////////////////
 // DEBUG REFERENCE GEOMETRY
@@ -125,12 +137,6 @@ scene.add(new THREE.Mesh(
 ///////////////////////////////
 
 renderer.setAnimationLoop(() => {
-
-  // IMPORTANT: OrbitControls ONLY when NOT in XR
-  if (!renderer.xr.isPresenting) {
-    controls.update();
-  }
-
   renderer.render(scene, camera);
 });
 
