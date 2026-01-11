@@ -15,7 +15,11 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
-scene.add(camera);
+
+const playerRig = new THREE.Group();
+playerRig.add(camera);
+scene.add(playerRig);
+
 
 // =========================
 // CONSTANTS (SI UNITS)
@@ -70,8 +74,15 @@ const playerRadiusPhysics = PLAYER_RS * blackHole.rs;
 const playerRadiusVR = playerRadiusPhysics * METERS_TO_VR;
 
 // Player looks inward along -Z
-camera.position.set(0, 1.6, playerRadiusVR);
-camera.lookAt(0, 0, 0);
+playerRig.position.set(0, 0, playerRadiusVR);
+playerRig.lookAt(0, 0, 0);
+
+renderer.xr.addEventListener('sessionstart', () => {
+  playerRig.position.set(0, 0, playerRadiusVR);
+  playerRig.lookAt(0, 0, 0);
+});
+
+
 
 // =========================
 // CUBE (INFALLING TEST MASS)
