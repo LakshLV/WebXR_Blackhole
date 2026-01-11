@@ -61,13 +61,19 @@ let cubePhysicsRadius = 20 * blackHole.rs;
 // RENDER MAPPING
 ///////////////////////////////
 
-const HORIZON_RENDER_DISTANCE = 0.04;
 
 function physicsRadiusToRenderZ(rPhysics) {
-  return (
-    (rPhysics - PLAYER_PHYSICS_RADIUS) / blackHole.rs
-  ) * HORIZON_RENDER_DISTANCE;
+  const rNorm = rPhysics / blackHole.rs;
+
+  // Clamp to avoid log blowups
+  const clamped = Math.max(rNorm - 1.0, 1e-6);
+
+  // Logarithmic compression (perceptual)
+  const logScale = Math.log10(clamped + 1);
+
+  return -logScale * 2.0; // meters
 }
+
 
 ///////////////////////////////
 // EVENT HORIZON VISUAL
