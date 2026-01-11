@@ -55,7 +55,7 @@ blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 ///////////////////////////////
 
 const PLAYER_PHYSICS_RADIUS = 50 * blackHole.rs;
-let cubePhysicsRadius = 30 * blackHole.rs;
+let cubePhysicsRadius = 20 * blackHole.rs;
 
 ///////////////////////////////
 // RENDER MAPPING
