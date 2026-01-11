@@ -14,11 +14,11 @@ document.body.appendChild(VRButton.createButton(renderer));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 1000);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
 scene.add(camera);
 
 // =========================
-// CONSTANTS (SI)
+// CONSTANTS (SI UNITS)
 // =========================
 
 const G = 6.67430e-11;
@@ -57,33 +57,38 @@ const horizon = new THREE.Mesh(
 );
 
 horizon.rotation.x = Math.PI / 2;
+horizon.position.z = 0;
 scene.add(horizon);
 
 // =========================
 // PLAYER (EXTERNAL OBSERVER)
 // =========================
 
-const PLAYER_RS = 6;
+// Player at 10 r_s
+const PLAYER_RS = 10;
 const playerRadiusPhysics = PLAYER_RS * blackHole.rs;
 const playerRadiusVR = playerRadiusPhysics * METERS_TO_VR;
 
+// Player looks inward along -Z
 camera.position.set(0, 1.6, playerRadiusVR);
 camera.lookAt(0, 0, 0);
 
 // =========================
-// CUBE (TEST MASS)
+// CUBE (INFALLING TEST MASS)
 // =========================
 
 const cubeSizePhysics = 1; // meters
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
-const cubeGeometry = new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR);
-const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+
 scene.add(cube);
 
-// Initial conditions
-let r = 10 * blackHole.rs;
+// Initial cube position: 20 r_s
+let r = 20 * blackHole.rs;
 let tau = 0;
 
 // =========================
@@ -95,8 +100,8 @@ function drdTau(r) {
   return -c * Math.sqrt(blackHole.rs / r);
 }
 
-// Adaptive proper timestep
-function computeDeltaTau(r) {
+// Adaptive timestep
+function deltaTau(r) {
   return 1e-3 * r / Math.abs(drdTau(r));
 }
 
@@ -106,26 +111,30 @@ function tidalAcceleration(r) {
 }
 
 // =========================
-// RENDER LOOP
+// ANIMATION LOOP
 // =========================
 
 renderer.setAnimationLoop(() => {
   if (r > blackHole.rs) {
-    const dTau = computeDeltaTau(r);
+    const dTau = deltaTau(r);
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    // Update cube position
-    cube.position.z = -r * METERS_TO_VR;
+    // Position cube between player and horizon
+    cube.position.z = r * METERS_TO_VR;
 
     // Spaghettification
     const aTidal = tidalAcceleration(r);
-    const stretch = 1 + aTidal / 50; // scale factor (documented)
+    const stretch = 1 + aTidal / 20; // visible but physical
 
-    cube.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
+    cube.scale.set(
+      1 / Math.sqrt(stretch),
+      stretch,
+      1 / Math.sqrt(stretch)
+    );
 
     console.log({
-      r_rs: r / blackHole.rs,
+      r_rs: (r / blackHole.rs).toFixed(3),
       a_tidal: aTidal.toFixed(2),
       tau: tau.toFixed(2)
     });
