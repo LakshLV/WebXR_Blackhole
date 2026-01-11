@@ -19,18 +19,12 @@ document.body.appendChild(VRButton.createButton(renderer));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-const camera = new THREE.PerspectiveCamera(
-  70,
-  window.innerWidth / window.innerHeight,
-  0.01,
-  20
-);
-
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 camera.position.set(0, 1.6, 0);
 scene.add(camera);
 
 ///////////////////////////////
-// PHYSICAL CONSTANTS
+// CONSTANTS
 ///////////////////////////////
 
 const G = 6.67430e-11;
@@ -43,87 +37,74 @@ const SOLAR_MASS = 1.98847e30;
 
 const blackHole = {
   massSolar: 1e6,
-  massKg: null,
-  rs: null
+  massKg: 1e6 * SOLAR_MASS,
 };
-
-blackHole.massKg = blackHole.massSolar * SOLAR_MASS;
 blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 
 ///////////////////////////////
-// PHYSICS RADII
+// PHYSICS STATE
 ///////////////////////////////
 
 const PLAYER_PHYSICS_RADIUS = 50 * blackHole.rs;
 let cubePhysicsRadius = 20 * blackHole.rs;
 
-///////////////////////////////
-// RENDER MAPPING
-///////////////////////////////
-
-
-function physicsRadiusToRenderZ(rPhysics) {
-  const rNorm = rPhysics / blackHole.rs;
-
-  // Clamp to avoid log blowups
-  const clamped = Math.max(rNorm - 1.0, 1e-6);
-
-  // Logarithmic compression (perceptual)
-  const logScale = Math.log10(clamped + 1);
-
-  return -logScale * 2.0; // meters
-}
-
-
-///////////////////////////////
-// EVENT HORIZON VISUAL
-///////////////////////////////
-
-const horizonZ = physicsRadiusToRenderZ(blackHole.rs);
-
-const horizonRing = new THREE.Mesh(
-  new THREE.RingGeometry(1.0, 1.05, 128),
-  new THREE.MeshBasicMaterial({
-    color: 0x00ffff,
-    side: THREE.DoubleSide
-  })
-);
-
-horizonRing.rotation.x = Math.PI / 2;
-horizonRing.position.set(0, 0, horizonZ);
-scene.add(horizonRing);
-
-///////////////////////////////
-// CUBE
-///////////////////////////////
-
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(0.15, 0.15, 0.15),
-  new THREE.MeshBasicMaterial({ color: 0xff0000 })
-);
-
-scene.add(cube);
-
-///////////////////////////////
-// TIME VARIABLES
-///////////////////////////////
-
-let t = 0;      // coordinate time (observer)
-let tau = 0;    // proper time (cube)
+let t = 0;
+let tau = 0;
 let lastTime = null;
 
 ///////////////////////////////
 // PHYSICS FUNCTIONS
 ///////////////////////////////
 
-// dr/dτ = -c * sqrt(r_s / r)
 function radialVelocity(r) {
   return -c * Math.sqrt(blackHole.rs / r);
 }
 
-// dt/dτ = 1 / (1 - r_s / r)
 function timeDilation(r) {
-  return 1.0 / (1.0 - blackHole.rs / r);
+  return 1 / (1 - blackHole.rs / r);
+}
+
+///////////////////////////////
+// RENDER MAPPING (linear, unchanged)
+///////////////////////////////
+
+const HORIZON_RENDER_DISTANCE = 0.04;
+function physicsRadiusToRenderZ(r) {
+  return ((r - PLAYER_PHYSICS_RADIUS) / blackHole.rs) * HORIZON_RENDER_DISTANCE;
+}
+
+///////////////////////////////
+// HORIZON
+///////////////////////////////
+
+const horizon = new THREE.Mesh(
+  new THREE.RingGeometry(1.0, 1.05, 128),
+  new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide })
+);
+horizon.rotation.x = Math.PI / 2;
+horizon.position.z = physicsRadiusToRenderZ(blackHole.rs);
+scene.add(horizon);
+
+///////////////////////////////
+// CUBE
+///////////////////////////////
+
+const CUBE_SIZE_METERS = 1.0;
+
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(0.25, 0.25, 0.25),
+  new THREE.MeshBasicMaterial({ color: 0xff4444 })
+);
+scene.add(cube);
+
+///////////////////////////////
+// SPAGHETTIFICATION
+///////////////////////////////
+
+const DISRUPTION_ACCELERATION = 1e6; // m/s^2
+
+function tidalAcceleration(r) {
+  return (2 * G * blackHole.massKg / (r ** 3)) * CUBE_SIZE_METERS;
 }
 
 ///////////////////////////////
@@ -140,12 +121,10 @@ hud.style.fontSize = '14px';
 document.body.appendChild(hud);
 
 ///////////////////////////////
-// RENDER LOOP
+// LOOP
 ///////////////////////////////
 
 renderer.setAnimationLoop(() => {
-
-  // Only run physics once VR session is active
   if (!renderer.xr.isPresenting) {
     renderer.render(scene, camera);
     return;
@@ -154,47 +133,41 @@ renderer.setAnimationLoop(() => {
   const now = performance.now();
   if (lastTime === null) {
     lastTime = now;
-    renderer.render(scene, camera);
     return;
   }
 
   const dt = (now - lastTime) * 0.001;
   lastTime = now;
 
-  // Advance coordinate time
   t += dt;
 
-  // Time dilation factor
   const dilation = timeDilation(cubePhysicsRadius);
-
-  // Convert observer time → proper time
   const dTau = dt / dilation;
 
-  // Integrate motion using proper time
   cubePhysicsRadius += radialVelocity(cubePhysicsRadius) * dTau;
   tau += dTau;
 
-  // Update render position
-  cube.position.set(
-    0,
-    1.6,
-    physicsRadiusToRenderZ(cubePhysicsRadius)
+  cube.position.set(0, 1.6, physicsRadiusToRenderZ(cubePhysicsRadius));
+
+  // --- Spaghettification ---
+  const aTidal = tidalAcceleration(cubePhysicsRadius);
+  const stretch = Math.min(aTidal / DISRUPTION_ACCELERATION, 5);
+
+  cube.scale.set(
+    1,
+    1,
+    1 + stretch
   );
 
-  // HUD
   hud.innerHTML = `
-t (observer): ${t.toFixed(2)} s<br>
-τ (cube): ${tau.toFixed(2)} s<br>
+t: ${t.toFixed(2)} s<br>
+τ: ${tau.toFixed(2)} s<br>
 r / rₛ: ${(cubePhysicsRadius / blackHole.rs).toFixed(4)}<br>
-dt/dτ: ${dilation.toFixed(2)}
+a_tidal: ${aTidal.toExponential(3)} m/s²
 `;
 
   renderer.render(scene, camera);
 });
-
-///////////////////////////////
-// RESIZE
-///////////////////////////////
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
