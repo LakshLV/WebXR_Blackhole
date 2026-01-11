@@ -30,7 +30,7 @@ camera.position.set(0, 1.6, 0);
 scene.add(camera);
 
 ///////////////////////////////
-// PHYSICAL CONSTANTS (SI)
+// PHYSICAL CONSTANTS
 ///////////////////////////////
 
 const G = 6.67430e-11;
@@ -55,7 +55,7 @@ blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 ///////////////////////////////
 
 const PLAYER_PHYSICS_RADIUS = 50 * blackHole.rs;
-let cubePhysicsRadius = 8 * blackHole.rs; // start between 5–10 r_s
+let cubePhysicsRadius = 8 * blackHole.rs;
 
 ///////////////////////////////
 // RENDER MAPPING
@@ -102,10 +102,12 @@ scene.add(cube);
 // TIME VARIABLES
 ///////////////////////////////
 
-let tau = 0; // proper time only (motion driven by τ)
+let t = 0;      // coordinate time (observer)
+let tau = 0;    // proper time (cube)
+let lastTime = null;
 
 ///////////////////////////////
-// FREE-FALL EQUATION
+// PHYSICS FUNCTIONS
 ///////////////////////////////
 
 // dr/dτ = -c * sqrt(r_s / r)
@@ -113,14 +115,9 @@ function radialVelocity(r) {
   return -c * Math.sqrt(blackHole.rs / r);
 }
 
-///////////////////////////////
-// ADAPTIVE TIMESTEP
-///////////////////////////////
-
-const EPSILON = 1e-3;
-
-function computeDeltaTau(r) {
-  return EPSILON * r / Math.abs(radialVelocity(r));
+// dt/dτ = 1 / (1 - r_s / r)
+function timeDilation(r) {
+  return 1.0 / (1.0 - blackHole.rs / r);
 }
 
 ///////////////////////////////
@@ -142,26 +139,48 @@ document.body.appendChild(hud);
 
 renderer.setAnimationLoop(() => {
 
-  // Adaptive proper-time step
-  const dTau = computeDeltaTau(cubePhysicsRadius);
+  // Only run physics once VR session is active
+  if (!renderer.xr.isPresenting) {
+    renderer.render(scene, camera);
+    return;
+  }
 
-  // Integrate radius
+  const now = performance.now();
+  if (lastTime === null) {
+    lastTime = now;
+    renderer.render(scene, camera);
+    return;
+  }
+
+  const dt = (now - lastTime) * 0.001;
+  lastTime = now;
+
+  // Advance coordinate time
+  t += dt;
+
+  // Time dilation factor
+  const dilation = timeDilation(cubePhysicsRadius);
+
+  // Convert observer time → proper time
+  const dTau = dt / dilation;
+
+  // Integrate motion using proper time
   cubePhysicsRadius += radialVelocity(cubePhysicsRadius) * dTau;
   tau += dTau;
 
-  // Update cube position
+  // Update render position
   cube.position.set(
     0,
     1.6,
     physicsRadiusToRenderZ(cubePhysicsRadius)
   );
 
-  // HUD debug
+  // HUD
   hud.innerHTML = `
-τ (cube): ${tau.toFixed(4)} s<br>
+t (observer): ${t.toFixed(2)} s<br>
+τ (cube): ${tau.toFixed(2)} s<br>
 r / rₛ: ${(cubePhysicsRadius / blackHole.rs).toFixed(4)}<br>
-dr/dτ: ${radialVelocity(cubePhysicsRadius).toExponential(3)}<br>
-Δτ: ${dTau.toExponential(3)}
+dt/dτ: ${dilation.toFixed(2)}
 `;
 
   renderer.render(scene, camera);
