@@ -14,12 +14,11 @@ document.body.appendChild(VRButton.createButton(renderer));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
-
+// Camera + XR rig
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 5000);
 const playerRig = new THREE.Group();
 playerRig.add(camera);
 scene.add(playerRig);
-
 
 // =========================
 // CONSTANTS (SI UNITS)
@@ -43,37 +42,43 @@ blackHole.massKg = blackHole.massSolar * SOLAR_MASS;
 blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 
 // =========================
-// VISUAL SCALE
+// VISUAL SCALE (TUNED)
 // =========================
 
-// 1 VR meter = 1000 physics meters
-const METERS_TO_VR = 1 / 1000;
+// 1 VR meter = 100 physics meters
+const METERS_TO_VR = 1 / 100;
 
 // =========================
-// EVENT HORIZON
+// EVENT HORIZON (VISIBLE)
 // =========================
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
 const horizon = new THREE.Mesh(
-  new THREE.RingGeometry(horizonRadiusVR * 0.98, horizonRadiusVR * 1.02, 128),
-  new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide })
+  new THREE.TorusGeometry(horizonRadiusVR, 5, 16, 128),
+  new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+    wireframe: true
+  })
 );
 
 horizon.rotation.x = Math.PI / 2;
-horizon.position.z = 0;
 scene.add(horizon);
 
+// Singularity marker (visual only)
+const singularity = new THREE.Mesh(
+  new THREE.SphereGeometry(2, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+scene.add(singularity);
+
 // =========================
-// PLAYER (EXTERNAL OBSERVER)
+// PLAYER POSITION
 // =========================
 
-// Player at 10 r_s
-const PLAYER_RS = 10;
-const playerRadiusPhysics = PLAYER_RS * blackHole.rs;
-const playerRadiusVR = playerRadiusPhysics * METERS_TO_VR;
+const PLAYER_RS = 3;
+const playerRadiusVR = PLAYER_RS * blackHole.rs * METERS_TO_VR;
 
-// Player looks inward along -Z
 playerRig.position.set(0, 0, playerRadiusVR);
 playerRig.lookAt(0, 0, 0);
 
@@ -82,14 +87,15 @@ renderer.xr.addEventListener('sessionstart', () => {
   playerRig.lookAt(0, 0, 0);
 });
 
-
-
 // =========================
 // CUBE (INFALLING TEST MASS)
 // =========================
 
-const cubeSizePhysics = 1; // meters
-const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
+// Physics size
+const cubeSizePhysics = 1;
+
+// Visual size (intentionally larger)
+const cubeSizeVR = 0.25;
 
 const cube = new THREE.Mesh(
   new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
@@ -98,8 +104,8 @@ const cube = new THREE.Mesh(
 
 scene.add(cube);
 
-// Initial cube position: 20 r_s
-let r = 20 * blackHole.rs;
+// Initial physics state
+let r = 4 * blackHole.rs;
 let tau = 0;
 
 // =========================
@@ -122,7 +128,7 @@ function tidalAcceleration(r) {
 }
 
 // =========================
-// ANIMATION LOOP
+// RENDER LOOP
 // =========================
 
 renderer.setAnimationLoop(() => {
@@ -131,12 +137,12 @@ renderer.setAnimationLoop(() => {
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    // Position cube between player and horizon
+    // Position cube
     cube.position.z = r * METERS_TO_VR;
 
-    // Spaghettification
+    // Spaghettification (physics-driven)
     const aTidal = tidalAcceleration(r);
-    const stretch = 1 + aTidal / 20; // visible but physical
+    const stretch = 1 + aTidal / 10;
 
     cube.scale.set(
       1 / Math.sqrt(stretch),
