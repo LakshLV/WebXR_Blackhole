@@ -125,7 +125,8 @@ renderer.setAnimationLoop(() => {
     tau += dTau;
 
     // Cube falls straight down toward center
-    cube.position.y = r * METERS_TO_VR;
+    cube.position.set(0, -2, -3);
+
 
     // Spaghettification (radial stretch)
     const aTidal = tidalAcceleration(r);
