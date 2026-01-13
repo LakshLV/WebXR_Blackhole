@@ -81,7 +81,7 @@ renderer.xr.addEventListener('sessionstart', () => {
 // LARGE CUBE (100 m)
 // =========================
 
-const cubeSizePhysics = 100; // meters
+const cubeSizePhysics = 1000; // meters
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
