@@ -128,30 +128,21 @@ renderer.setAnimationLoop(() => {
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    // Cube falls straight down toward center
+    // Parent cube ONCE (safe even if repeated, but cleaner later)
     playerRig.add(cube);
+
+    // Fixed position in front of player
     cube.position.set(0, 0, -3);
 
-
-
-
-    // Spaghettification (radial stretch)
-    //const aTidal = tidalAcceleration(r);
-    //const stretch = 1 + aTidal / 5;
-
-    //cube.scale.set(
-      1 / Math.sqrt(stretch),
-      stretch,
-      1 / Math.sqrt(stretch)
-    //);
-    cube.scale.set(1, 1, 1); // Disable stretch for clarity
+    // NO spaghettification for now
+    cube.scale.set(1, 1, 1);
 
     console.log({
       r_rs: (r / blackHole.rs).toFixed(3),
-      //a_tidal: aTidal.toFixed(1),
       tau: tau.toFixed(2)
     });
   }
 
   renderer.render(scene, camera);
 });
+
