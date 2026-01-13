@@ -140,9 +140,24 @@ renderer.setAnimationLoop(() => {
     tau += dTau;
   }
 
+  let visualFall = 0;
+
   // VISUAL POSITION
-  const z = visualDepth(r);
-  cube.position.set(0, 0, z);
+  // How close are we to the horizon (0 far, 1 near)
+  const proximity = THREE.MathUtils.clamp(
+  1 - (r - blackHole.rs) / (5 * blackHole.rs),
+  0,
+  1
+  );
+
+  // Perceptual speed boost (THIS is the key)
+  const perceptualSpeed = 0.02 + proximity * 0.3;
+
+  // Accumulate visible motion
+  visualFall += perceptualSpeed;
+  // Place cube using accumulated visual motion
+  cube.position.set(0, 0, -visualFall);
+
 
   // SPAGHETTIFICATION (only near horizon)
   const aTidal = tidalAcceleration(r);
