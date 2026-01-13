@@ -125,7 +125,9 @@ renderer.setAnimationLoop(() => {
     tau += dTau;
 
     // Cube falls straight down toward center
-    cube.position.set(0, playerRig.position.y, playerRig.position.z - 3);
+    playerRig.add(cube);
+    cube.position.set(0, 0, -3);
+
 
 
 
