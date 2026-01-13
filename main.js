@@ -125,7 +125,8 @@ renderer.setAnimationLoop(() => {
     tau += dTau;
 
     // Cube falls straight down toward center
-    cube.position.set(0, -2, -3);
+    cube.position.set(0, playerRig.position.y, playerRig.position.z - 3);
+
 
 
     // Spaghettification (radial stretch)
