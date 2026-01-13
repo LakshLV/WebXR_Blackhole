@@ -148,7 +148,7 @@ renderer.setAnimationLoop(() => {
 
     console.log({
       r_rs: (r / blackHole.rs).toFixed(3),
-      a_tidal: aTidal.toFixed(1),
+      //a_tidal: aTidal.toFixed(1),
       tau: tau.toFixed(2)
     });
   }
