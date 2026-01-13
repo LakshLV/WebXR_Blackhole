@@ -78,10 +78,10 @@ renderer.xr.addEventListener('sessionstart', () => {
 });
 
 // =========================
-// LARGE CUBE (10 m)
+// LARGE CUBE (100 m)
 // =========================
 
-const cubeSizePhysics = 10; // meters
+const cubeSizePhysics = 100; // meters
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
