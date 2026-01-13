@@ -86,8 +86,12 @@ const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
   new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
-  new THREE.MeshBasicMaterial({ color: 0xffffff })
+  new THREE.MeshBasicMaterial({
+    color: 0xff0000,
+    wireframe: true
+  })
 );
+cube.position.set(0, 0, -3);
 
 scene.add(cube);
 
@@ -132,14 +136,15 @@ renderer.setAnimationLoop(() => {
 
 
     // Spaghettification (radial stretch)
-    const aTidal = tidalAcceleration(r);
-    const stretch = 1 + aTidal / 5;
+    //const aTidal = tidalAcceleration(r);
+    //const stretch = 1 + aTidal / 5;
 
-    cube.scale.set(
+    //cube.scale.set(
       1 / Math.sqrt(stretch),
       stretch,
       1 / Math.sqrt(stretch)
-    );
+    //);
+    cube.scale.set(1, 1, 1); // Disable stretch for clarity
 
     console.log({
       r_rs: (r / blackHole.rs).toFixed(3),
