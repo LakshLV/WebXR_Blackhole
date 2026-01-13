@@ -15,7 +15,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
 // XR rig
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500);
 const playerRig = new THREE.Group();
 playerRig.add(camera);
 scene.add(playerRig);
@@ -29,11 +29,10 @@ const c = 299792458;
 const SOLAR_MASS = 1.98847e30;
 
 // =========================
-// BLACK HOLE (STELLAR MASS)
+// BLACK HOLE (10 SOLAR MASSES)
 // =========================
 
 const blackHole = {
-  massSolar: 10,
   massKg: 10 * SOLAR_MASS,
   rs: null
 };
@@ -41,22 +40,22 @@ const blackHole = {
 blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 
 // =========================
-// VISUAL SCALE (INTENTIONALLY CLOSE)
+// VISUAL SCALE
 // =========================
 
-// 1 VR meter = 5,000 physics meters
-const METERS_TO_VR = 1 / 5000;
+// 1 VR meter = 1,000 physics meters
+const METERS_TO_VR = 1 / 1000;
 
 // =========================
-// EVENT HORIZON (CLEAR & LARGE)
+// EVENT HORIZON (VISIBLE)
 // =========================
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
 const horizon = new THREE.Mesh(
-  new THREE.TorusGeometry(horizonRadiusVR, 0.3, 16, 128),
+  new THREE.TorusGeometry(horizonRadiusVR, 0.25, 16, 128),
   new THREE.MeshBasicMaterial({
-    color: 0x00ff00,
+    color: 0x00ffff,
     wireframe: true
   })
 );
@@ -65,57 +64,69 @@ horizon.rotation.x = Math.PI / 2;
 scene.add(horizon);
 
 // =========================
-// PLAYER — DIRECTLY ABOVE
+// PLAYER — ABOVE, LOOKING DOWN
 // =========================
 
-// Player floats above the black hole, looking down
-playerRig.position.set(0, horizonRadiusVR * 2, 0);
+playerRig.position.set(0, horizonRadiusVR * 3, 0);
 playerRig.lookAt(0, 0, 0);
 
 renderer.xr.addEventListener('sessionstart', () => {
-  playerRig.position.set(0, horizonRadiusVR * 2, 0);
+  playerRig.position.set(0, horizonRadiusVR * 3, 0);
   playerRig.lookAt(0, 0, 0);
 });
 
 // =========================
-// LARGE CUBE (100 m)
+// FALLING CUBE (BIG ENOUGH TO SEE)
 // =========================
 
-const cubeSizePhysics = 1000; // meters
+const cubeSizePhysics = 50; // meters
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
   new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
   new THREE.MeshBasicMaterial({
-    color: 0xff0000,
+    color: 0xff3333,
     wireframe: true
   })
 );
-cube.position.set(0, 0, -3);
 
 scene.add(cube);
 
-// Initial physics state
-let r = 1.3 * blackHole.rs;
+// =========================
+// PHYSICS STATE
+// =========================
+
+// Start close enough to see motion
+let r = 6 * blackHole.rs;
 let tau = 0;
 
 // =========================
 // PHYSICS FUNCTIONS
 // =========================
 
-// dr/dτ = -c sqrt(rs / r)
+// Proper-time radial free fall
 function drdTau(r) {
   return -c * Math.sqrt(blackHole.rs / r);
 }
 
 // Adaptive timestep
 function deltaTau(r) {
-  return 5e-4 * r / Math.abs(drdTau(r));
+  return 1e-3 * r / Math.abs(drdTau(r));
 }
 
-// Tidal acceleration
+// Tidal acceleration across cube
 function tidalAcceleration(r) {
   return (2 * G * blackHole.massKg / Math.pow(r, 3)) * cubeSizePhysics;
+}
+
+// =========================
+// VISUAL MAPPING (THE MAGIC)
+// =========================
+
+// Log compression so motion is visible
+function visualDepth(r) {
+  const x = Math.max(r / blackHole.rs - 1, 0.0001);
+  return -Math.log(x) * 2; // tunable drama knob
 }
 
 // =========================
@@ -123,26 +134,31 @@ function tidalAcceleration(r) {
 // =========================
 
 renderer.setAnimationLoop(() => {
-  if (r > blackHole.rs) {
+  if (r > blackHole.rs * 1.001) {
     const dTau = deltaTau(r);
     r += drdTau(r) * dTau;
     tau += dTau;
-
-    // Parent cube ONCE (safe even if repeated, but cleaner later)
-    playerRig.add(cube);
-
-    // Fixed position in front of player
-    cube.position.set(0, 0, -3);
-
-    // NO spaghettification for now
-    cube.scale.set(1, 1, 1);
-
-    console.log({
-      r_rs: (r / blackHole.rs).toFixed(3),
-      tau: tau.toFixed(2)
-    });
   }
+
+  // VISUAL POSITION
+  const z = visualDepth(r);
+  cube.position.set(0, 0, z);
+
+  // SPAGHETTIFICATION (only near horizon)
+  const aTidal = tidalAcceleration(r);
+  const stretch = THREE.MathUtils.clamp(1 + aTidal / 15, 1, 20);
+
+  cube.scale.set(
+    1 / Math.sqrt(stretch),
+    stretch,
+    1 / Math.sqrt(stretch)
+  );
+
+  console.log({
+    r_rs: (r / blackHole.rs).toFixed(3),
+    stretch: stretch.toFixed(2),
+    tau: tau.toFixed(2)
+  });
 
   renderer.render(scene, camera);
 });
-
