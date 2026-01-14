@@ -18,7 +18,13 @@ scene.background = new THREE.Color(0x000000);
    PLAYER (EXTERNAL OBSERVER)
 ===================================================== */
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
+const camera = new THREE.PerspectiveCamera(
+  70,
+  window.innerWidth / window.innerHeight,
+  0.05,
+  200
+);
+
 const playerRig = new THREE.Group();
 playerRig.add(camera);
 scene.add(playerRig);
@@ -39,7 +45,7 @@ const c = 299792458;
 const SOLAR_MASS = 1.98847e30;
 
 /* =====================================================
-   BLACK HOLE (STELLAR MASS)
+   BLACK HOLE PARAMETERS
 ===================================================== */
 
 const blackHole = {
@@ -48,7 +54,7 @@ const blackHole = {
   rs: null
 };
 
-// r_s = 2GM / c^2
+// Schwarzschild radius r_s = 2GM / c^2
 blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 
 console.log("Schwarzschild radius (m):", blackHole.rs);
@@ -61,7 +67,7 @@ console.log("Schwarzschild radius (m):", blackHole.rs);
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON
+   EVENT HORIZON VISUAL
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
@@ -69,7 +75,7 @@ const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 const horizon = new THREE.Mesh(
   new THREE.TorusGeometry(horizonRadiusVR, 0.25, 16, 128),
   new THREE.MeshBasicMaterial({
-    color: 0x00ffcc,
+    color: 0x00ffff,
     wireframe: true
   })
 );
@@ -92,7 +98,10 @@ placePlayer();
    INFALLING CUBE
 ===================================================== */
 
-const cubeSizePhysics = 20; // meters (intentionally large)
+// Physics size (meters)
+const cubeSizePhysics = 20000;
+
+// Visual size (VR meters)
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
@@ -141,7 +150,7 @@ renderer.xr.addEventListener('sessionend', () => {
 });
 
 /* =====================================================
-   SCHWARZSCHILD RADIAL FREE FALL
+   SCHWARZSCHILD FREE FALL
 ===================================================== */
 
 // dr/dτ = -c sqrt(r_s / r)
@@ -149,7 +158,7 @@ function drdTau(r) {
   return -c * Math.sqrt(blackHole.rs / r);
 }
 
-// Adaptive timestep
+// Adaptive proper-time step
 function deltaTau(r) {
   return 5e-4 * r / Math.abs(drdTau(r));
 }
@@ -170,12 +179,12 @@ renderer.setAnimationLoop(() => {
 
   if (simulationRunning && r > blackHole.rs) {
 
-    /* ---- Physics update ---- */
+    // ---- Physics update ----
     const dTau = deltaTau(r);
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    /* ---- Perceptual motion ---- */
+    // ---- Perceptual motion ----
     const proximity = THREE.MathUtils.clamp(
       1 - (r - blackHole.rs) / (5 * blackHole.rs),
       0,
@@ -187,7 +196,7 @@ renderer.setAnimationLoop(() => {
 
     cube.position.set(0, 0, -visualFall);
 
-    /* ---- Spaghettification (GATED) ---- */
+    // ---- Spaghettification (GATED & ANCHORED) ----
     const stretchStart = 2.5 * blackHole.rs;
     let stretch = 1;
 
@@ -202,20 +211,21 @@ renderer.setAnimationLoop(() => {
       1 / Math.sqrt(stretch)
     );
 
-    // Anchor stretching inward (toward BH)
+    // Anchor stretch toward the black hole
     const stretchOffset = (stretch - 1) * cubeSizeVR * 0.5;
     cube.position.z -= stretchOffset;
 
-    /* ---- Horizon cutoff ---- */
+    // ---- Horizon cutoff ----
     if (r <= blackHole.rs) {
       simulationRunning = false;
-      console.log("Event horizon reached — simulation frozen");
+      console.log("Event horizon reached (external observer limit)");
     }
 
-    /* ---- Debug ---- */
+    // ---- Debug ----
     console.log({
       r_rs: (r / blackHole.rs).toFixed(3),
-      tau: tau.toFixed(2)
+      tau: tau.toFixed(2),
+      stretch: stretch.toFixed(2)
     });
   }
 
