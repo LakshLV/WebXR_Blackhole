@@ -37,10 +37,8 @@ const SOLAR_MASS = 1.98847e30;
 
 const blackHole = {
   massKg: 10 * SOLAR_MASS,
-  rs: null
+  rs: (2 * G * 10 * SOLAR_MASS) / (c * c)
 };
-
-blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 
 /* =====================================================
    SCALE
@@ -49,41 +47,50 @@ blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON
+   EVENT HORIZON (SPHERE — THIS IS THE REAL ONE)
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
-const horizon = new THREE.Mesh(
-  new THREE.TorusGeometry(horizonRadiusVR, 0.35, 16, 128),
+const horizonSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(horizonRadiusVR, 48, 48),
   new THREE.MeshBasicMaterial({
-    color: 0x00ffcc,
-    wireframe: true
+    color: 0x00ffff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.35
   })
 );
 
-horizon.rotation.x = Math.PI / 2;
-scene.add(horizon);
+scene.add(horizonSphere);
+
+/* Optional equatorial guide ring */
+const horizonRing = new THREE.Mesh(
+  new THREE.TorusGeometry(horizonRadiusVR, 0.15, 16, 128),
+  new THREE.MeshBasicMaterial({ color: 0x00ffff })
+);
+horizonRing.rotation.x = Math.PI / 2;
+scene.add(horizonRing);
 
 /* =====================================================
-   PLAYER PLACEMENT (CLOSE & CLEAR)
+   PLAYER PLACEMENT
 ===================================================== */
 
 function placePlayer() {
   playerRig.position.set(
     0,
     horizonRadiusVR * 1.2,
-    horizonRadiusVR * 2.2
+    horizonRadiusVR * 2.0
   );
   playerRig.lookAt(0, 0, 0);
 }
 
 /* =====================================================
-   CUBE (VERY LARGE PHYSICS SIZE)
+   INFALLING CUBE (VERY LARGE)
 ===================================================== */
 
 const cubeSizePhysics = 10000; // meters
-const cubeSizeVR = cubeSizePhysics * METERS_TO_VR; // ~2m
+const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
   new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
@@ -100,10 +107,7 @@ scene.add(cube);
 ===================================================== */
 
 const rStart = 4 * blackHole.rs;
-const lateralOffsetVR = 0.8 * blackHole.rs * METERS_TO_VR;
-
 let r, tau;
-let visualY;
 let resetting = false;
 
 /* =====================================================
@@ -113,11 +117,12 @@ let resetting = false;
 function resetSimulation() {
   r = rStart;
   tau = 0;
-  visualY = horizonRadiusVR * 2;
 
-  cube.visible = true;
+  // Place cube radially offset
+  const startRadiusVR = r * METERS_TO_VR;
+  cube.position.set(startRadiusVR, 0, 0);
   cube.scale.set(1, 1, 1);
-  cube.position.set(lateralOffsetVR, visualY, 0);
+  cube.visible = true;
 
   resetting = false;
   console.log("Cube reset");
@@ -164,30 +169,26 @@ renderer.setAnimationLoop(() => {
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    const proximity = THREE.MathUtils.clamp(
-      1 - (r - blackHole.rs) / (3 * blackHole.rs),
-      0,
-      1
-    );
+    // ---- RADIAL POSITION ----
+    const radiusVR = r * METERS_TO_VR;
+    cube.position.set(radiusVR, 0, 0);
 
-    visualY -= 0.01 + proximity * 0.06;
-    cube.position.y = visualY;
-
-    if (r < 2.5 * blackHole.rs) {
+    // ---- SPAGHETTIFICATION ----
+    if (r < 3 * blackHole.rs) {
       const stretch = 1 + tidalAcceleration(r) / 800;
 
       cube.scale.set(
-        1 / Math.sqrt(stretch),
         stretch,
+        1 / Math.sqrt(stretch),
         1 / Math.sqrt(stretch)
       );
     }
 
+    // ---- EVENT HORIZON CUTOFF ----
     if (r <= blackHole.rs) {
       cube.visible = false;
       resetting = true;
-
-      setTimeout(resetSimulation, 1200);
+      setTimeout(resetSimulation, 1500);
     }
   }
 
