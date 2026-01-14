@@ -85,7 +85,7 @@ function placePlayer() {
    CUBE
 ===================================================== */
 
-const cubeSizePhysics = 50;
+const cubeSizePhysics = 10000;
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
