@@ -18,13 +18,7 @@ scene.background = new THREE.Color(0x000000);
    PLAYER (EXTERNAL OBSERVER)
 ===================================================== */
 
-const camera = new THREE.PerspectiveCamera(
-  70,
-  window.innerWidth / window.innerHeight,
-  0.05,
-  200
-);
-
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 300);
 const playerRig = new THREE.Group();
 playerRig.add(camera);
 scene.add(playerRig);
@@ -33,11 +27,11 @@ scene.add(playerRig);
    DEBUG REFERENCES
 ===================================================== */
 
-scene.add(new THREE.GridHelper(20, 20));
+scene.add(new THREE.GridHelper(30, 30));
 scene.add(new THREE.AxesHelper(5));
 
 /* =====================================================
-   PHYSICAL CONSTANTS (SI)
+   PHYSICAL CONSTANTS
 ===================================================== */
 
 const G = 6.67430e-11;
@@ -54,30 +48,24 @@ const blackHole = {
   rs: null
 };
 
-// Schwarzschild radius r_s = 2GM / c^2
 blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
-
-console.log("Schwarzschild radius (m):", blackHole.rs);
 
 /* =====================================================
    VISUAL SCALE
 ===================================================== */
 
-// 1 VR meter = 5,000 real meters
+// 1 VR meter = 5 km
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON VISUAL
+   EVENT HORIZON
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
 const horizon = new THREE.Mesh(
-  new THREE.TorusGeometry(horizonRadiusVR, 0.25, 16, 128),
-  new THREE.MeshBasicMaterial({
-    color: 0x00ffff,
-    wireframe: true
-  })
+  new THREE.TorusGeometry(horizonRadiusVR, 0.3, 16, 128),
+  new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true })
 );
 
 horizon.rotation.x = Math.PI / 2;
@@ -88,28 +76,21 @@ scene.add(horizon);
 ===================================================== */
 
 function placePlayer() {
-  playerRig.position.set(0, horizonRadiusVR * 2.5, 0);
+  playerRig.position.set(0, horizonRadiusVR * 3, 0);
   playerRig.lookAt(0, 0, 0);
 }
-
 placePlayer();
 
 /* =====================================================
    INFALLING CUBE
 ===================================================== */
 
-// Physics size (meters)
-const cubeSizePhysics = 20000;
-
-// Visual size (VR meters)
+const cubeSizePhysics = 10000;           // meters (BIG so you can see it)
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
   new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
-  new THREE.MeshBasicMaterial({
-    color: 0xff0000,
-    wireframe: true
-  })
+  new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
 );
 
 scene.add(cube);
@@ -119,13 +100,12 @@ scene.add(cube);
 ===================================================== */
 
 const rStart = 6 * blackHole.rs;
-
 let r = rStart;
 let tau = 0;
 let visualFall = 0;
 
 /* =====================================================
-   SIMULATION CONTROL
+   SIM CONTROL
 ===================================================== */
 
 let simulationRunning = false;
@@ -137,28 +117,21 @@ renderer.xr.addEventListener('sessionstart', () => {
   tau = 0;
   visualFall = 0;
 
+  // START CUBE ABOVE THE HORIZON
+  cube.position.set(0, horizonRadiusVR * 1.8, 0);
   cube.scale.set(1, 1, 1);
-  cube.position.set(0, 0, -1);
 
   placePlayer();
-
-  console.log("Simulation started in VR");
-});
-
-renderer.xr.addEventListener('sessionend', () => {
-  simulationRunning = false;
 });
 
 /* =====================================================
    SCHWARZSCHILD FREE FALL
 ===================================================== */
 
-// dr/dτ = -c sqrt(r_s / r)
 function drdTau(r) {
   return -c * Math.sqrt(blackHole.rs / r);
 }
 
-// Adaptive proper-time step
 function deltaTau(r) {
   return 5e-4 * r / Math.abs(drdTau(r));
 }
@@ -179,28 +152,24 @@ renderer.setAnimationLoop(() => {
 
   if (simulationRunning && r > blackHole.rs) {
 
-    // ---- Physics update ----
+    // Physics
     const dTau = deltaTau(r);
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    // ---- Perceptual motion ----
+    // Visual fall (toward black hole along -Y)
     const proximity = THREE.MathUtils.clamp(
       1 - (r - blackHole.rs) / (5 * blackHole.rs),
       0,
       1
     );
 
-    const perceptualSpeed = 0.002 + proximity * 0.02;
-    visualFall += perceptualSpeed;
+    visualFall += 0.002 + proximity * 0.02;
+    cube.position.y -= visualFall;
 
-    cube.position.set(0, 0, -visualFall);
-
-    // ---- Spaghettification (GATED & ANCHORED) ----
-    const stretchStart = 2.5 * blackHole.rs;
+    // Spaghettification (late + controlled)
     let stretch = 1;
-
-    if (r < stretchStart) {
+    if (r < 2.5 * blackHole.rs) {
       const aTidal = tidalAcceleration(r);
       stretch = 1 + aTidal / 200;
     }
@@ -211,22 +180,14 @@ renderer.setAnimationLoop(() => {
       1 / Math.sqrt(stretch)
     );
 
-    // Anchor stretch toward the black hole
-    const stretchOffset = (stretch - 1) * cubeSizeVR * 0.5;
-    cube.position.z -= stretchOffset;
+    // Anchor stretch downward
+    cube.position.y -= (stretch - 1) * cubeSizeVR * 0.5;
 
-    // ---- Horizon cutoff ----
+    // Horizon cutoff
     if (r <= blackHole.rs) {
       simulationRunning = false;
-      console.log("Event horizon reached (external observer limit)");
+      console.log("Horizon reached — external observer limit");
     }
-
-    // ---- Debug ----
-    console.log({
-      r_rs: (r / blackHole.rs).toFixed(3),
-      tau: tau.toFixed(2),
-      stretch: stretch.toFixed(2)
-    });
   }
 
   renderer.render(scene, camera);
