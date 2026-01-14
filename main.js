@@ -18,16 +18,10 @@ scene.background = new THREE.Color(0x000000);
    PLAYER
 ===================================================== */
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 400);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
 const playerRig = new THREE.Group();
 playerRig.add(camera);
 scene.add(playerRig);
-
-/* =====================================================
-   DEBUG
-===================================================== */
-
-scene.add(new THREE.AxesHelper(5));
 
 /* =====================================================
    CONSTANTS
@@ -61,36 +55,42 @@ const METERS_TO_VR = 1 / 5000;
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
 const horizon = new THREE.Mesh(
-  new THREE.TorusGeometry(horizonRadiusVR, 0.3, 16, 128),
-  new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true })
+  new THREE.TorusGeometry(horizonRadiusVR, 0.35, 16, 128),
+  new THREE.MeshBasicMaterial({
+    color: 0x00ffcc,
+    wireframe: true
+  })
 );
 
 horizon.rotation.x = Math.PI / 2;
 scene.add(horizon);
 
 /* =====================================================
-   PLAYER PLACEMENT (SIDE-ON VIEW)
+   PLAYER PLACEMENT (CLOSE & CLEAR)
 ===================================================== */
 
 function placePlayer() {
   playerRig.position.set(
     0,
-    horizonRadiusVR * 1.5,
-    horizonRadiusVR * 4
+    horizonRadiusVR * 1.2,
+    horizonRadiusVR * 2.2
   );
   playerRig.lookAt(0, 0, 0);
 }
 
 /* =====================================================
-   CUBE
+   CUBE (VERY LARGE PHYSICS SIZE)
 ===================================================== */
 
-const cubeSizePhysics = 10000;
-const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
+const cubeSizePhysics = 10000; // meters
+const cubeSizeVR = cubeSizePhysics * METERS_TO_VR; // ~2m
 
 const cube = new THREE.Mesh(
   new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
-  new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
+  new THREE.MeshBasicMaterial({
+    color: 0xff3333,
+    wireframe: true
+  })
 );
 
 scene.add(cube);
@@ -99,34 +99,32 @@ scene.add(cube);
    PHYSICS STATE
 ===================================================== */
 
-const rStart = 6 * blackHole.rs;
-const lateralOffset = 1.2 * blackHole.rs * METERS_TO_VR;
+const rStart = 4 * blackHole.rs;
+const lateralOffsetVR = 0.8 * blackHole.rs * METERS_TO_VR;
 
-let r, tau, visualFall;
+let r, tau;
+let visualY;
 let resetting = false;
 
 /* =====================================================
-   RESET FUNCTION
+   RESET
 ===================================================== */
 
 function resetSimulation() {
   r = rStart;
   tau = 0;
-  visualFall = 0;
-  resetting = false;
+  visualY = horizonRadiusVR * 2;
 
   cube.visible = true;
   cube.scale.set(1, 1, 1);
+  cube.position.set(lateralOffsetVR, visualY, 0);
 
-  cube.position.set(
-    lateralOffset,
-    horizonRadiusVR * 2,
-    0
-  );
+  resetting = false;
+  console.log("Cube reset");
 }
 
 /* =====================================================
-   XR CONTROL
+   XR EVENTS
 ===================================================== */
 
 renderer.xr.addEventListener('sessionstart', () => {
@@ -167,16 +165,16 @@ renderer.setAnimationLoop(() => {
     tau += dTau;
 
     const proximity = THREE.MathUtils.clamp(
-      1 - (r - blackHole.rs) / (5 * blackHole.rs),
+      1 - (r - blackHole.rs) / (3 * blackHole.rs),
       0,
       1
     );
 
-    visualFall += 0.003 + proximity * 0.025;
-    cube.position.y -= visualFall;
+    visualY -= 0.01 + proximity * 0.06;
+    cube.position.y = visualY;
 
     if (r < 2.5 * blackHole.rs) {
-      const stretch = 1 + tidalAcceleration(r) / 250;
+      const stretch = 1 + tidalAcceleration(r) / 800;
 
       cube.scale.set(
         1 / Math.sqrt(stretch),
@@ -185,12 +183,11 @@ renderer.setAnimationLoop(() => {
       );
     }
 
-    // HARD EVENT HORIZON CUTOFF
     if (r <= blackHole.rs) {
       cube.visible = false;
       resetting = true;
 
-      setTimeout(resetSimulation, 1000);
+      setTimeout(resetSimulation, 1200);
     }
   }
 
