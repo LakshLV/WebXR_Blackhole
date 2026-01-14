@@ -15,23 +15,22 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
 /* =====================================================
-   PLAYER (EXTERNAL OBSERVER)
+   PLAYER
 ===================================================== */
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 300);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 400);
 const playerRig = new THREE.Group();
 playerRig.add(camera);
 scene.add(playerRig);
 
 /* =====================================================
-   DEBUG REFERENCES
+   DEBUG
 ===================================================== */
 
-scene.add(new THREE.GridHelper(30, 30));
 scene.add(new THREE.AxesHelper(5));
 
 /* =====================================================
-   PHYSICAL CONSTANTS (SI)
+   CONSTANTS
 ===================================================== */
 
 const G = 6.67430e-11;
@@ -39,27 +38,24 @@ const c = 299792458;
 const SOLAR_MASS = 1.98847e30;
 
 /* =====================================================
-   BLACK HOLE PARAMETERS
+   BLACK HOLE
 ===================================================== */
 
 const blackHole = {
-  massSolar: 10,
   massKg: 10 * SOLAR_MASS,
   rs: null
 };
 
-// Schwarzschild radius r_s = 2GM / c^2
 blackHole.rs = (2 * G * blackHole.massKg) / (c * c);
 
 /* =====================================================
-   VISUAL SCALE
+   SCALE
 ===================================================== */
 
-// 1 VR meter = 5 km (visual only)
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON VISUAL
+   EVENT HORIZON
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
@@ -73,20 +69,23 @@ horizon.rotation.x = Math.PI / 2;
 scene.add(horizon);
 
 /* =====================================================
-   PLAYER POSITION
+   PLAYER PLACEMENT (SIDE-ON VIEW)
 ===================================================== */
 
 function placePlayer() {
-  playerRig.position.set(0, horizonRadiusVR * 3, 0);
+  playerRig.position.set(
+    0,
+    horizonRadiusVR * 1.5,
+    horizonRadiusVR * 4
+  );
   playerRig.lookAt(0, 0, 0);
 }
-placePlayer();
 
 /* =====================================================
-   INFALLING CUBE
+   CUBE
 ===================================================== */
 
-const cubeSizePhysics = 50; // meters (large for visibility)
+const cubeSizePhysics = 50;
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
 const cube = new THREE.Mesh(
@@ -101,100 +100,97 @@ scene.add(cube);
 ===================================================== */
 
 const rStart = 6 * blackHole.rs;
+const lateralOffset = 1.2 * blackHole.rs * METERS_TO_VR;
 
-let r = rStart;
-let tau = 0;
-let visualFall = 0;
+let r, tau, visualFall;
+let resetting = false;
 
 /* =====================================================
-   SIMULATION CONTROL
+   RESET FUNCTION
 ===================================================== */
 
-let simulationRunning = false;
-
-renderer.xr.addEventListener('sessionstart', () => {
-  simulationRunning = true;
-
+function resetSimulation() {
   r = rStart;
   tau = 0;
   visualFall = 0;
+  resetting = false;
 
   cube.visible = true;
   cube.scale.set(1, 1, 1);
-  cube.position.set(0, horizonRadiusVR * 1.8, 0);
 
+  cube.position.set(
+    lateralOffset,
+    horizonRadiusVR * 2,
+    0
+  );
+}
+
+/* =====================================================
+   XR CONTROL
+===================================================== */
+
+renderer.xr.addEventListener('sessionstart', () => {
   placePlayer();
+  resetSimulation();
 });
 
 renderer.xr.addEventListener('sessionend', () => {
-  simulationRunning = false;
+  resetting = true;
 });
 
 /* =====================================================
-   SCHWARZSCHILD FREE FALL
+   PHYSICS
 ===================================================== */
 
-// dr/dτ = -c sqrt(r_s / r)
 function drdTau(r) {
   return -c * Math.sqrt(blackHole.rs / r);
 }
 
-// Adaptive proper-time step
 function deltaTau(r) {
   return 5e-4 * r / Math.abs(drdTau(r));
 }
-
-/* =====================================================
-   TIDAL ACCELERATION
-===================================================== */
 
 function tidalAcceleration(r) {
   return (2 * G * blackHole.massKg / Math.pow(r, 3)) * cubeSizePhysics;
 }
 
 /* =====================================================
-   RENDER LOOP
+   LOOP
 ===================================================== */
 
 renderer.setAnimationLoop(() => {
 
-  if (simulationRunning && r > blackHole.rs) {
+  if (!resetting && r > blackHole.rs) {
 
-    // ---- Physics update (truth) ----
     const dTau = deltaTau(r);
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    // ---- Visual fall (perceptual) ----
     const proximity = THREE.MathUtils.clamp(
       1 - (r - blackHole.rs) / (5 * blackHole.rs),
       0,
       1
     );
 
-    visualFall += 0.002 + proximity * 0.02;
+    visualFall += 0.003 + proximity * 0.025;
     cube.position.y -= visualFall;
 
-    // ---- Spaghettification (late, gated) ----
-    let stretch = 1;
     if (r < 2.5 * blackHole.rs) {
-      stretch = 1 + tidalAcceleration(r) / 200;
+      const stretch = 1 + tidalAcceleration(r) / 250;
+
+      cube.scale.set(
+        1 / Math.sqrt(stretch),
+        stretch,
+        1 / Math.sqrt(stretch)
+      );
     }
 
-    cube.scale.set(
-      1 / Math.sqrt(stretch),
-      stretch,
-      1 / Math.sqrt(stretch)
-    );
-
-    cube.position.y -= (stretch - 1) * cubeSizeVR * 0.5;
-
-    // ---- Horizon cutoff (EXTERNAL OBSERVER RULE) ----
+    // HARD EVENT HORIZON CUTOFF
     if (r <= blackHole.rs) {
       cube.visible = false;
-      simulationRunning = false;
+      resetting = true;
 
-      console.log("Horizon reached — simulation reset");
+      setTimeout(resetSimulation, 1000);
     }
   }
 
