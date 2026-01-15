@@ -47,7 +47,7 @@ const blackHole = {
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON (SPHERE — THIS IS THE REAL ONE)
+   EVENT HORIZON (SPHERE)
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
@@ -61,16 +61,7 @@ const horizonSphere = new THREE.Mesh(
     opacity: 0.35
   })
 );
-
 scene.add(horizonSphere);
-
-/* Optional equatorial guide ring */
-const horizonRing = new THREE.Mesh(
-  new THREE.TorusGeometry(horizonRadiusVR, 0.15, 16, 128),
-  new THREE.MeshBasicMaterial({ color: 0x00ffff })
-);
-horizonRing.rotation.x = Math.PI / 2;
-scene.add(horizonRing);
 
 /* =====================================================
    PLAYER PLACEMENT
@@ -86,21 +77,32 @@ function placePlayer() {
 }
 
 /* =====================================================
-   INFALLING CUBE (VERY LARGE)
+   SEGMENTED INFALL OBJECT
 ===================================================== */
 
+const segmentCount = 20;
 const cubeSizePhysics = 10000; // meters
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
+const segmentLengthVR = cubeSizeVR / segmentCount;
 
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
-  new THREE.MeshBasicMaterial({
-    color: 0xff3333,
-    wireframe: true
-  })
-);
+const segmentMaterial = new THREE.MeshBasicMaterial({
+  color: 0xff4444
+});
 
-scene.add(cube);
+const segments = [];
+
+for (let i = 0; i < segmentCount; i++) {
+  const seg = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      segmentLengthVR,
+      segmentLengthVR,
+      segmentLengthVR
+    ),
+    segmentMaterial
+  );
+  scene.add(seg);
+  segments.push(seg);
+}
 
 /* =====================================================
    PHYSICS STATE
@@ -108,7 +110,7 @@ scene.add(cube);
 
 const rStart = 4 * blackHole.rs;
 let r, tau;
-let resetting = false;
+let running = false;
 
 /* =====================================================
    RESET
@@ -118,14 +120,19 @@ function resetSimulation() {
   r = rStart;
   tau = 0;
 
-  // Place cube radially offset
-  const startRadiusVR = r * METERS_TO_VR;
-  cube.position.set(startRadiusVR, 0, 0);
-  cube.scale.set(1, 1, 1);
-  cube.visible = true;
+  const baseRadiusVR = r * METERS_TO_VR;
 
-  resetting = false;
-  console.log("Cube reset");
+  for (let i = 0; i < segmentCount; i++) {
+    segments[i].position.set(
+      baseRadiusVR + i * segmentLengthVR,
+      0,
+      0
+    );
+    segments[i].scale.set(1, 1, 1);
+    segments[i].visible = true;
+  }
+
+  running = true;
 }
 
 /* =====================================================
@@ -138,7 +145,7 @@ renderer.xr.addEventListener('sessionstart', () => {
 });
 
 renderer.xr.addEventListener('sessionend', () => {
-  resetting = true;
+  running = false;
 });
 
 /* =====================================================
@@ -163,31 +170,39 @@ function tidalAcceleration(r) {
 
 renderer.setAnimationLoop(() => {
 
-  if (!resetting && r > blackHole.rs) {
+  if (running && r > blackHole.rs) {
 
     const dTau = deltaTau(r);
     r += drdTau(r) * dTau;
     tau += dTau;
 
-    // ---- RADIAL POSITION ----
-    const radiusVR = r * METERS_TO_VR;
-    cube.position.set(radiusVR, 0, 0);
+    const baseRadiusVR = r * METERS_TO_VR;
 
-    // ---- SPAGHETTIFICATION ----
-    if (r < 3 * blackHole.rs) {
-      const stretch = 1 + tidalAcceleration(r) / 800;
+    for (let i = 0; i < segmentCount; i++) {
+      const localR = r + i * cubeSizePhysics / segmentCount;
 
-      cube.scale.set(
+      const stretch = THREE.MathUtils.clamp(
+        1 + tidalAcceleration(localR) / 1200,
+        1,
+        6
+      );
+
+      segments[i].position.set(
+        baseRadiusVR + i * segmentLengthVR,
+        0,
+        0
+      );
+
+      segments[i].scale.set(
         stretch,
         1 / Math.sqrt(stretch),
         1 / Math.sqrt(stretch)
       );
     }
 
-    // ---- EVENT HORIZON CUTOFF ----
     if (r <= blackHole.rs) {
-      cube.visible = false;
-      resetting = true;
+      segments.forEach(s => s.visible = false);
+      running = false;
       setTimeout(resetSimulation, 1500);
     }
   }
