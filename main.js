@@ -47,12 +47,12 @@ const blackHole = {
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON (VISUAL)
+   EVENT HORIZON VISUAL
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
-const horizon = new THREE.Mesh(
+scene.add(new THREE.Mesh(
   new THREE.SphereGeometry(horizonRadiusVR, 48, 48),
   new THREE.MeshBasicMaterial({
     color: 0x00ffff,
@@ -60,8 +60,7 @@ const horizon = new THREE.Mesh(
     transparent: true,
     opacity: 0.3
   })
-);
-scene.add(horizon);
+));
 
 /* =====================================================
    PLAYER POSITION
@@ -77,28 +76,28 @@ function placePlayer() {
 }
 
 /* =====================================================
-   SEGMENTED BODY (INDIVIDUAL PARTICLES)
+   SEGMENTED BODY (125 CUBES)
 ===================================================== */
 
 const cubeSizePhysics = 10000; // meters
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
-const gridN = 4; // 64 cubes
+const gridN = 5; // 5×5×5 = 125 cubes
 const miniSizeVR = cubeSizeVR / gridN;
 
-const miniMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+const material = new THREE.MeshBasicMaterial({ color: 0xff4444 });
 
 const pieces = [];
 
-/* Create initial cube lattice */
+/* Build cube lattice */
 for (let x = 0; x < gridN; x++) {
   for (let y = 0; y < gridN; y++) {
     for (let z = 0; z < gridN; z++) {
 
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(miniSizeVR, miniSizeVR, miniSizeVR),
-        miniMaterial
-      );
+      const geom = new THREE.BoxGeometry(miniSizeVR, miniSizeVR, miniSizeVR);
+      geom.translate(miniSizeVR / 2, 0, 0); // pivot at FAR face
+
+      const mesh = new THREE.Mesh(geom, material);
       scene.add(mesh);
 
       pieces.push({
@@ -171,61 +170,62 @@ renderer.xr.addEventListener('sessionend', () => {
 
 renderer.setAnimationLoop(() => {
 
-  if (running) {
+  if (!running) {
+    renderer.render(scene, camera);
+    return;
+  }
 
-    let aliveCount = 0;
+  let aliveCount = 0;
 
-    pieces.forEach(p => {
-      if (!p.alive) return;
+  pieces.forEach(p => {
+    if (!p.alive) return;
 
-      aliveCount++;
+    aliveCount++;
 
-      const dTau = deltaTau(p.r);
-      p.r += drdTau(p.r) * dTau;
+    const dTau = deltaTau(p.r);
+    p.r += drdTau(p.r) * dTau;
 
-      if (p.r <= blackHole.rs) {
-        p.alive = false;
-        p.mesh.visible = false;
-        return;
-      }
-
-      /* Direction toward black hole */
-      const dir = p.mesh.position.clone().normalize().multiplyScalar(-1);
-
-      /* Visual slow-down near horizon */
-      const proximity = THREE.MathUtils.clamp(
-        1 - (p.r - blackHole.rs) / (2 * blackHole.rs),
-        0,
-        1
-      );
-
-      const slow = 1 - 0.85 * proximity;
-      const radiusVR = p.r * METERS_TO_VR * slow;
-
-      /* Position */
-      p.mesh.position.copy(dir.multiplyScalar(-radiusVR));
-
-      /* Orientation: stretch along radial direction */
-      p.mesh.lookAt(0, 0, 0);
-
-      /* Spaghettification */
-      const stretch = THREE.MathUtils.clamp(
-        1 + tidalAcceleration(p.r) / 1000,
-        1,
-        10
-      );
-
-      p.mesh.scale.set(
-        stretch,
-        1 / Math.sqrt(stretch),
-        1 / Math.sqrt(stretch)
-      );
-    });
-
-    if (aliveCount === 0) {
-      running = false;
-      setTimeout(resetSimulation, 1500);
+    if (p.r <= blackHole.rs) {
+      p.alive = false;
+      p.mesh.visible = false;
+      return;
     }
+
+    /* Radial direction */
+    const dir = p.mesh.position.clone().normalize().multiplyScalar(-1);
+
+    /* Visual slow-down near horizon */
+    const proximity = THREE.MathUtils.clamp(
+      1 - (p.r - blackHole.rs) / (2 * blackHole.rs),
+      0,
+      1
+    );
+
+    const radiusVR = p.r * METERS_TO_VR * (1 - 0.85 * proximity);
+
+    /* Position */
+    p.mesh.position.copy(dir.multiplyScalar(-radiusVR));
+
+    /* Orientation toward BH */
+    p.mesh.lookAt(0, 0, 0);
+
+    /* Directional spaghettification (ONLY inward face) */
+    const stretch = THREE.MathUtils.clamp(
+      1 + tidalAcceleration(p.r) / 600,
+      1,
+      16
+    );
+
+    p.mesh.scale.set(
+      stretch,
+      1 / Math.sqrt(stretch),
+      1 / Math.sqrt(stretch)
+    );
+  });
+
+  if (aliveCount === 0) {
+    running = false;
+    setTimeout(resetSimulation, 1500);
   }
 
   renderer.render(scene, camera);
