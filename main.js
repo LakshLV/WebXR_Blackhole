@@ -18,7 +18,7 @@ scene.background = new THREE.Color(0x000000);
    PLAYER
 ===================================================== */
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 300);
 const playerRig = new THREE.Group();
 playerRig.add(camera);
 scene.add(playerRig);
@@ -47,21 +47,21 @@ const blackHole = {
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON VISUAL (SPHERE)
+   EVENT HORIZON (VISUAL)
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
-const horizonSphere = new THREE.Mesh(
-  new THREE.SphereGeometry(horizonRadiusVR * 0.95, 48, 48),
+const horizon = new THREE.Mesh(
+  new THREE.SphereGeometry(horizonRadiusVR, 48, 48),
   new THREE.MeshBasicMaterial({
     color: 0x00ffff,
     wireframe: true,
     transparent: true,
-    opacity: 0.35
+    opacity: 0.3
   })
 );
-scene.add(horizonSphere);
+scene.add(horizon);
 
 /* =====================================================
    PLAYER POSITION
@@ -70,43 +70,45 @@ scene.add(horizonSphere);
 function placePlayer() {
   playerRig.position.set(
     0,
-    horizonRadiusVR * 1.1,
-    horizonRadiusVR * 2.0
+    horizonRadiusVR * 1.2,
+    horizonRadiusVR * 2.2
   );
   playerRig.lookAt(0, 0, 0);
 }
 
 /* =====================================================
-   SEGMENTED CUBE (3D GRID)
+   SEGMENTED BODY (INDIVIDUAL PARTICLES)
 ===================================================== */
 
-const cubeSizePhysics = 10000; // meters (confirmed good)
+const cubeSizePhysics = 10000; // meters
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
 
-const gridN = 4; // 4×4×4 = 64 mini-cubes (Quest-safe)
+const gridN = 4; // 64 cubes
 const miniSizeVR = cubeSizeVR / gridN;
 
-const miniMaterial = new THREE.MeshBasicMaterial({
-  color: 0xff4444
-});
+const miniMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444 });
 
-const miniCubes = [];
+const pieces = [];
 
+/* Create initial cube lattice */
 for (let x = 0; x < gridN; x++) {
   for (let y = 0; y < gridN; y++) {
     for (let z = 0; z < gridN; z++) {
-      const m = new THREE.Mesh(
+
+      const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(miniSizeVR, miniSizeVR, miniSizeVR),
         miniMaterial
       );
-      scene.add(m);
-      miniCubes.push({
-        mesh: m,
-        offset: new THREE.Vector3(
+      scene.add(mesh);
+
+      pieces.push({
+        mesh,
+        localOffset: new THREE.Vector3(
           (x - (gridN - 1) / 2) * miniSizeVR,
           (y - (gridN - 1) / 2) * miniSizeVR,
           (z - (gridN - 1) / 2) * miniSizeVR
         ),
+        r: 0,
         alive: true
       });
     }
@@ -114,27 +116,37 @@ for (let x = 0; x < gridN; x++) {
 }
 
 /* =====================================================
-   PHYSICS STATE
+   PHYSICS
 ===================================================== */
 
-const rStart = 4 * blackHole.rs;
-let r;
-let running = false;
+function drdTau(r) {
+  return -c * Math.sqrt(blackHole.rs / r);
+}
+
+function deltaTau(r) {
+  return 5e-4 * r / Math.abs(drdTau(r));
+}
+
+function tidalAcceleration(r) {
+  return (2 * G * blackHole.massKg / (r ** 3)) * cubeSizePhysics;
+}
 
 /* =====================================================
    RESET
 ===================================================== */
 
+const rStart = 4 * blackHole.rs;
+let running = false;
+
 function resetSimulation() {
-  r = rStart;
+  pieces.forEach(p => {
+    p.alive = true;
+    p.r = rStart + p.localOffset.length() / METERS_TO_VR;
 
-  const baseRadiusVR = r * METERS_TO_VR;
-
-  miniCubes.forEach(c => {
-    c.alive = true;
-    c.mesh.visible = true;
-    c.mesh.scale.set(1, 1, 1);
-    c.mesh.position.copy(c.offset).add(new THREE.Vector3(baseRadiusVR, 0, 0));
+    const dir = p.localOffset.clone().normalize();
+    p.mesh.position.copy(dir.multiplyScalar(p.r * METERS_TO_VR));
+    p.mesh.scale.set(1, 1, 1);
+    p.mesh.visible = true;
   });
 
   running = true;
@@ -154,71 +166,63 @@ renderer.xr.addEventListener('sessionend', () => {
 });
 
 /* =====================================================
-   PHYSICS FUNCTIONS
-===================================================== */
-
-function drdTau(r) {
-  return -c * Math.sqrt(blackHole.rs / r);
-}
-
-function deltaTau(r) {
-  return 5e-4 * r / Math.abs(drdTau(r));
-}
-
-function tidalAcceleration(r) {
-  return (2 * G * blackHole.massKg / Math.pow(r, 3)) * cubeSizePhysics;
-}
-
-/* =====================================================
    LOOP
 ===================================================== */
 
 renderer.setAnimationLoop(() => {
 
-  if (running && r > blackHole.rs) {
+  if (running) {
 
-    const dTau = deltaTau(r);
-    r += drdTau(r) * dTau;
+    let aliveCount = 0;
 
-    const baseRadiusVR = r * METERS_TO_VR;
+    pieces.forEach(p => {
+      if (!p.alive) return;
 
-    const proximity = THREE.MathUtils.clamp(
-      1 - (r - blackHole.rs) / (2 * blackHole.rs),
-      0,
-      1
-    );
+      aliveCount++;
 
-    const stretchFactor = 1 + proximity * proximity * 8;
+      const dTau = deltaTau(p.r);
+      p.r += drdTau(p.r) * dTau;
 
-    miniCubes.forEach(c => {
-      if (!c.alive) return;
-
-      const localR = r + c.offset.x / METERS_TO_VR;
-
-      if (localR <= blackHole.rs) {
-        c.alive = false;
-        c.mesh.visible = false;
+      if (p.r <= blackHole.rs) {
+        p.alive = false;
+        p.mesh.visible = false;
         return;
       }
 
-      // Radial fall (slows visually near horizon)
-      const slowDown = 1 - proximity * 0.85;
+      /* Direction toward black hole */
+      const dir = p.mesh.position.clone().normalize().multiplyScalar(-1);
 
-      c.mesh.position.set(
-        baseRadiusVR * slowDown,
+      /* Visual slow-down near horizon */
+      const proximity = THREE.MathUtils.clamp(
+        1 - (p.r - blackHole.rs) / (2 * blackHole.rs),
         0,
-        0
-      ).add(c.offset.clone().multiplyScalar(stretchFactor));
+        1
+      );
 
-      // Spaghettification
-      c.mesh.scale.set(
-        stretchFactor,
-        1 / Math.sqrt(stretchFactor),
-        1 / Math.sqrt(stretchFactor)
+      const slow = 1 - 0.85 * proximity;
+      const radiusVR = p.r * METERS_TO_VR * slow;
+
+      /* Position */
+      p.mesh.position.copy(dir.multiplyScalar(-radiusVR));
+
+      /* Orientation: stretch along radial direction */
+      p.mesh.lookAt(0, 0, 0);
+
+      /* Spaghettification */
+      const stretch = THREE.MathUtils.clamp(
+        1 + tidalAcceleration(p.r) / 1000,
+        1,
+        10
+      );
+
+      p.mesh.scale.set(
+        stretch,
+        1 / Math.sqrt(stretch),
+        1 / Math.sqrt(stretch)
       );
     });
 
-    if (miniCubes.every(c => !c.alive)) {
+    if (aliveCount === 0) {
       running = false;
       setTimeout(resetSimulation, 1500);
     }
