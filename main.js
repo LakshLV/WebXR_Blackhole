@@ -47,13 +47,13 @@ const blackHole = {
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   EVENT HORIZON (SPHERE)
+   EVENT HORIZON VISUAL (SPHERE)
 ===================================================== */
 
 const horizonRadiusVR = blackHole.rs * METERS_TO_VR;
 
 const horizonSphere = new THREE.Mesh(
-  new THREE.SphereGeometry(horizonRadiusVR, 48, 48),
+  new THREE.SphereGeometry(horizonRadiusVR * 0.95, 48, 48),
   new THREE.MeshBasicMaterial({
     color: 0x00ffff,
     wireframe: true,
@@ -64,44 +64,53 @@ const horizonSphere = new THREE.Mesh(
 scene.add(horizonSphere);
 
 /* =====================================================
-   PLAYER PLACEMENT
+   PLAYER POSITION
 ===================================================== */
 
 function placePlayer() {
   playerRig.position.set(
     0,
-    horizonRadiusVR * 1.2,
+    horizonRadiusVR * 1.1,
     horizonRadiusVR * 2.0
   );
   playerRig.lookAt(0, 0, 0);
 }
 
 /* =====================================================
-   SEGMENTED INFALL OBJECT
+   SEGMENTED CUBE (3D GRID)
 ===================================================== */
 
-const segmentCount = 20;
-const cubeSizePhysics = 10000; // meters
+const cubeSizePhysics = 10000; // meters (confirmed good)
 const cubeSizeVR = cubeSizePhysics * METERS_TO_VR;
-const segmentLengthVR = cubeSizeVR / segmentCount;
 
-const segmentMaterial = new THREE.MeshBasicMaterial({
+const gridN = 4; // 4×4×4 = 64 mini-cubes (Quest-safe)
+const miniSizeVR = cubeSizeVR / gridN;
+
+const miniMaterial = new THREE.MeshBasicMaterial({
   color: 0xff4444
 });
 
-const segments = [];
+const miniCubes = [];
 
-for (let i = 0; i < segmentCount; i++) {
-  const seg = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      segmentLengthVR,
-      segmentLengthVR,
-      segmentLengthVR
-    ),
-    segmentMaterial
-  );
-  scene.add(seg);
-  segments.push(seg);
+for (let x = 0; x < gridN; x++) {
+  for (let y = 0; y < gridN; y++) {
+    for (let z = 0; z < gridN; z++) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(miniSizeVR, miniSizeVR, miniSizeVR),
+        miniMaterial
+      );
+      scene.add(m);
+      miniCubes.push({
+        mesh: m,
+        offset: new THREE.Vector3(
+          (x - (gridN - 1) / 2) * miniSizeVR,
+          (y - (gridN - 1) / 2) * miniSizeVR,
+          (z - (gridN - 1) / 2) * miniSizeVR
+        ),
+        alive: true
+      });
+    }
+  }
 }
 
 /* =====================================================
@@ -109,7 +118,7 @@ for (let i = 0; i < segmentCount; i++) {
 ===================================================== */
 
 const rStart = 4 * blackHole.rs;
-let r, tau;
+let r;
 let running = false;
 
 /* =====================================================
@@ -118,19 +127,15 @@ let running = false;
 
 function resetSimulation() {
   r = rStart;
-  tau = 0;
 
   const baseRadiusVR = r * METERS_TO_VR;
 
-  for (let i = 0; i < segmentCount; i++) {
-    segments[i].position.set(
-      baseRadiusVR + i * segmentLengthVR,
-      0,
-      0
-    );
-    segments[i].scale.set(1, 1, 1);
-    segments[i].visible = true;
-  }
+  miniCubes.forEach(c => {
+    c.alive = true;
+    c.mesh.visible = true;
+    c.mesh.scale.set(1, 1, 1);
+    c.mesh.position.copy(c.offset).add(new THREE.Vector3(baseRadiusVR, 0, 0));
+  });
 
   running = true;
 }
@@ -149,7 +154,7 @@ renderer.xr.addEventListener('sessionend', () => {
 });
 
 /* =====================================================
-   PHYSICS
+   PHYSICS FUNCTIONS
 ===================================================== */
 
 function drdTau(r) {
@@ -174,34 +179,46 @@ renderer.setAnimationLoop(() => {
 
     const dTau = deltaTau(r);
     r += drdTau(r) * dTau;
-    tau += dTau;
 
     const baseRadiusVR = r * METERS_TO_VR;
 
-    for (let i = 0; i < segmentCount; i++) {
-      const localR = r + i * cubeSizePhysics / segmentCount;
+    const proximity = THREE.MathUtils.clamp(
+      1 - (r - blackHole.rs) / (2 * blackHole.rs),
+      0,
+      1
+    );
 
-      const stretch = THREE.MathUtils.clamp(
-        1 + tidalAcceleration(localR) / 1200,
-        1,
-        6
-      );
+    const stretchFactor = 1 + proximity * proximity * 8;
 
-      segments[i].position.set(
-        baseRadiusVR + i * segmentLengthVR,
+    miniCubes.forEach(c => {
+      if (!c.alive) return;
+
+      const localR = r + c.offset.x / METERS_TO_VR;
+
+      if (localR <= blackHole.rs) {
+        c.alive = false;
+        c.mesh.visible = false;
+        return;
+      }
+
+      // Radial fall (slows visually near horizon)
+      const slowDown = 1 - proximity * 0.85;
+
+      c.mesh.position.set(
+        baseRadiusVR * slowDown,
         0,
         0
-      );
+      ).add(c.offset.clone().multiplyScalar(stretchFactor));
 
-      segments[i].scale.set(
-        stretch,
-        1 / Math.sqrt(stretch),
-        1 / Math.sqrt(stretch)
+      // Spaghettification
+      c.mesh.scale.set(
+        stretchFactor,
+        1 / Math.sqrt(stretchFactor),
+        1 / Math.sqrt(stretchFactor)
       );
-    }
+    });
 
-    if (r <= blackHole.rs) {
-      segments.forEach(s => s.visible = false);
+    if (miniCubes.every(c => !c.alive)) {
       running = false;
       setTimeout(resetSimulation, 1500);
     }
