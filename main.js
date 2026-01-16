@@ -14,7 +14,7 @@ scene.background = new THREE.Color(0x000000);
 
 /* ================= CAMERA ================= */
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 300);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 400);
 const rig = new THREE.Group();
 rig.add(camera);
 scene.add(rig);
@@ -35,19 +35,19 @@ const METERS_TO_VR = 1 / 5000;
 const horizonVR = RS * METERS_TO_VR;
 
 scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(horizonVR * 0.85, 48, 48),
+  new THREE.SphereGeometry(horizonVR * 0.75, 48, 48),
   new THREE.MeshBasicMaterial({
     color: 0x00ffaa,
     wireframe: true,
     transparent: true,
-    opacity: 0.35
+    opacity: 0.4
   })
 ));
 
 /* ================= PLAYER ================= */
 
 function placePlayer() {
-  rig.position.set(0, horizonVR * 1.4, horizonVR * 2.6);
+  rig.position.set(0, horizonVR * 1.2, horizonVR * 2.2);
   rig.lookAt(0, 0, 0);
 }
 
@@ -56,7 +56,7 @@ function placePlayer() {
 const bodySizeMeters = 10000;
 const bodySizeVR = bodySizeMeters * METERS_TO_VR;
 
-const N = 6; // doubled density
+const N = 6;
 const cubeSizeVR = bodySizeVR / N;
 
 const cubes = [];
@@ -136,10 +136,10 @@ renderer.setAnimationLoop(() => {
     if (!c.alive) return;
     alive++;
 
-    const dt = 0.0005 * c.r / Math.abs(drdt(c.r));
+    const dt = 0.0006 * c.r / Math.abs(drdt(c.r));
     c.r += drdt(c.r) * dt;
 
-    if (c.r <= RS * 0.85) {
+    if (c.r <= RS * 0.78) {
       c.mesh.visible = false;
       c.alive = false;
       return;
@@ -148,26 +148,31 @@ renderer.setAnimationLoop(() => {
     /* Radial direction */
     const radialDir = c.localOffset.clone().normalize();
 
-    /* Rotate cube so -Z faces black hole */
+    /* Rotate cube so -Z faces BH */
     c.mesh.lookAt(0, 0, 0);
 
     /* Base position */
     const basePos = radialDir.clone().multiplyScalar(c.r * METERS_TO_VR);
     c.mesh.position.copy(basePos);
 
-    /* Stretch only near horizon */
+    /* -------- STRETCH CONTROL (FIX) -------- */
+
     const proximity = THREE.MathUtils.clamp(
-      1 - (c.r - RS) / (1.2 * RS),
+      1 - (c.r - RS) / (1.1 * RS),
       0,
       1
     );
 
-    const stretch = 1 + proximity * (tidalStretch(c.r) / 900);
+    // gentler curve
+    const eased = proximity * proximity;
 
-    /* Stretch ONLY along local Z (toward BH) */
+    // reduced strength + hard clamp
+    const rawStretch = 1 + eased * (tidalStretch(c.r) / 2200);
+    const stretch = Math.min(rawStretch, 2.2);
+
     c.mesh.scale.set(1, 1, stretch);
 
-    /* Shift so far face stays fixed */
+    // keep far face anchored
     const shift = (stretch - 1) * cubeSizeVR * 0.5;
     c.mesh.translateZ(-shift);
   });
