@@ -1,9 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
-/* =====================================================
-   XR SETUP
-===================================================== */
+/* ================= XR SETUP ================= */
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.xr.enabled = true;
@@ -14,18 +12,14 @@ document.body.appendChild(VRButton.createButton(renderer));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-/* =====================================================
-   CAMERA / PLAYER
-===================================================== */
+/* ================= CAMERA ================= */
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 300);
 const rig = new THREE.Group();
 rig.add(camera);
 scene.add(rig);
 
-/* =====================================================
-   CONSTANTS
-===================================================== */
+/* ================= CONSTANTS ================= */
 
 const G = 6.67430e-11;
 const c = 299792458;
@@ -36,43 +30,37 @@ const RS = (2 * G * BH_MASS) / (c * c);
 
 const METERS_TO_VR = 1 / 5000;
 
-/* =====================================================
-   BLACK HOLE VISUAL
-===================================================== */
+/* ================= BLACK HOLE ================= */
 
 const horizonVR = RS * METERS_TO_VR;
 
 scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(horizonVR, 48, 48),
+  new THREE.SphereGeometry(horizonVR * 0.85, 48, 48),
   new THREE.MeshBasicMaterial({
-    color: 0x00ff88,
+    color: 0x00ffaa,
     wireframe: true,
     transparent: true,
     opacity: 0.35
   })
 ));
 
-/* =====================================================
-   PLAYER POSITION
-===================================================== */
+/* ================= PLAYER ================= */
 
 function placePlayer() {
-  rig.position.set(0, horizonVR * 1.3, horizonVR * 2.4);
+  rig.position.set(0, horizonVR * 1.4, horizonVR * 2.6);
   rig.lookAt(0, 0, 0);
 }
 
-/* =====================================================
-   SEGMENTED BODY (125 PERFECT CUBES)
-===================================================== */
+/* ================= BODY SETUP ================= */
 
 const bodySizeMeters = 10000;
 const bodySizeVR = bodySizeMeters * METERS_TO_VR;
 
-const N = 5;
+const N = 6; // doubled density
 const cubeSizeVR = bodySizeVR / N;
 
 const cubes = [];
-const material = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+const material = new THREE.MeshBasicMaterial({ color: 0xff4444, wireframe: true });
 
 for (let x = 0; x < N; x++) {
   for (let y = 0; y < N; y++) {
@@ -85,13 +73,15 @@ for (let x = 0; x < N; x++) {
 
       scene.add(mesh);
 
+      const localOffset = new THREE.Vector3(
+        (x - (N - 1) / 2) * cubeSizeVR,
+        (y - (N - 1) / 2) * cubeSizeVR,
+        (z - (N - 1) / 2) * cubeSizeVR
+      );
+
       cubes.push({
         mesh,
-        localOffset: new THREE.Vector3(
-          (x - (N - 1) / 2) * cubeSizeVR,
-          (y - (N - 1) / 2) * cubeSizeVR,
-          (z - (N - 1) / 2) * cubeSizeVR
-        ),
+        localOffset,
         r: 0,
         alive: true
       });
@@ -99,9 +89,7 @@ for (let x = 0; x < N; x++) {
   }
 }
 
-/* =====================================================
-   PHYSICS
-===================================================== */
+/* ================= PHYSICS ================= */
 
 function drdt(r) {
   return -c * Math.sqrt(RS / r);
@@ -111,9 +99,7 @@ function tidalStretch(r) {
   return (2 * G * BH_MASS / (r ** 3)) * bodySizeMeters;
 }
 
-/* =====================================================
-   RESET
-===================================================== */
+/* ================= RESET ================= */
 
 const rStart = 4 * RS;
 let running = false;
@@ -123,22 +109,19 @@ function reset() {
     c.alive = true;
     c.r = rStart + c.localOffset.length() / METERS_TO_VR;
     c.mesh.visible = true;
+    c.mesh.scale.set(1, 1, 1);
   });
   running = true;
 }
 
-/* =====================================================
-   XR EVENTS
-===================================================== */
+/* ================= XR EVENTS ================= */
 
 renderer.xr.addEventListener('sessionstart', () => {
   placePlayer();
   reset();
 });
 
-/* =====================================================
-   LOOP
-===================================================== */
+/* ================= LOOP ================= */
 
 renderer.setAnimationLoop(() => {
 
@@ -156,29 +139,37 @@ renderer.setAnimationLoop(() => {
     const dt = 0.0005 * c.r / Math.abs(drdt(c.r));
     c.r += drdt(c.r) * dt;
 
-    if (c.r <= RS) {
+    if (c.r <= RS * 0.85) {
       c.mesh.visible = false;
       c.alive = false;
       return;
     }
 
+    /* Radial direction */
     const radialDir = c.localOffset.clone().normalize();
 
-    /* Base center-of-mass position */
-    const basePos = radialDir.clone().multiplyScalar(c.r * METERS_TO_VR);
+    /* Rotate cube so -Z faces black hole */
+    c.mesh.lookAt(0, 0, 0);
 
-    /* Stretch only toward black hole */
-    const stretch = THREE.MathUtils.clamp(
-      tidalStretch(c.r) / 1200,
+    /* Base position */
+    const basePos = radialDir.clone().multiplyScalar(c.r * METERS_TO_VR);
+    c.mesh.position.copy(basePos);
+
+    /* Stretch only near horizon */
+    const proximity = THREE.MathUtils.clamp(
+      1 - (c.r - RS) / (1.2 * RS),
       0,
-      cubeSizeVR * 6
+      1
     );
 
-    const depthFactor = -c.localOffset.clone().normalize().dot(radialDir);
+    const stretch = 1 + proximity * (tidalStretch(c.r) / 900);
 
-    const visualOffset = radialDir.clone().multiplyScalar(stretch * depthFactor);
+    /* Stretch ONLY along local Z (toward BH) */
+    c.mesh.scale.set(1, 1, stretch);
 
-    c.mesh.position.copy(basePos.add(visualOffset));
+    /* Shift so far face stays fixed */
+    const shift = (stretch - 1) * cubeSizeVR * 0.5;
+    c.mesh.translateZ(-shift);
   });
 
   if (alive === 0) {
