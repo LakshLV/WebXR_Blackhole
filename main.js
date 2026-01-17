@@ -232,3 +232,4 @@ renderer.setAnimationLoop(() => {
 
   renderer.render(scene, camera);
 });
+ 
