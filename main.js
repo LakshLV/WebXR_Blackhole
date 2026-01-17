@@ -173,8 +173,10 @@ renderer.setAnimationLoop(() => {
     /* ---- Continuous spaghettification ---- */
     const tidal = tidalGradient(c.r);
 
-    // Significant incremental stretch — NEVER capped
-    c.stretchZ += tidal * dt * 0.01;
+    // Significant incremental stretch — stop adding when too close to prevent overshooting
+    if (c.r > RS * 1.05) {
+      c.stretchZ += tidal * dt * 0.01;
+    }
 
     /* ---- Gravitational redshift & time dilation fade ---- */
     // Physical redshift factor: sqrt(1 - RS/r)
@@ -186,8 +188,13 @@ renderer.setAnimationLoop(() => {
     const opacity = Math.max(0, timeDilationFactor);
     c.mesh.material.opacity = opacity;
     
-    /* ---- Remove when effectively crossed horizon (time dilation → 0) ---- */
-    if (timeDilationFactor < 0.003) {
+    /* ---- Check if stretched cube's nearest face crossed the horizon ---- */
+    // The cube's nearest face (when stretched) is at distance r - (stretchZ * cubeSizeVR / 2)
+    const stretchedNearestFace = c.r - (c.stretchZ * cubeSizeVR * 0.5);
+    
+    /* ---- Remove when absorbed by black hole ---- */
+    // Remove if: time dilation is negligible OR stretched face crossed event horizon
+    if (timeDilationFactor < 0.1 || stretchedNearestFace < RS) {
       c.mesh.visible = false;
       c.alive = false;
       return;
@@ -202,16 +209,11 @@ renderer.setAnimationLoop(() => {
     c.mesh.lookAt(0, 0, 0);
 
     /* ---- Apply stretch inward ---- */
-    // Cap stretch to prevent overshoot beyond center
-    const maxStretch = Math.max(1, c.r * METERS_TO_VR / cubeSizeVR);
-    c.stretchZ = Math.min(c.stretchZ, maxStretch);
-    
     c.mesh.scale.set(1, 1, c.stretchZ);
 
-    // Move mesh toward center in world space to prevent overshoot
-    const stretchOffset = (c.stretchZ - 1) * cubeSizeVR * 0.5;
-    const inwardDir = c.offset.clone().normalize();
-    c.mesh.position.addScaledVector(inwardDir, -stretchOffset);
+    // Anchor far face permanently
+    const inwardShift = (c.stretchZ - 1) * cubeSizeVR * 0.5;
+    c.mesh.translateZ(+inwardShift);
   });
 
   if (alive === 0) {
