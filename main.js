@@ -72,7 +72,12 @@ const N = 8;
 const cubeSizeVR = BODY_SIZE_VR / N;
 
 const cubes = [];
-const material = new THREE.MeshBasicMaterial({ color: 0xff5555, wireframe: true });
+const material = new THREE.MeshBasicMaterial({ 
+  color: 0xff5555, 
+  wireframe: true,
+  transparent: true,
+  opacity: 1.0
+});
 
 for (let x = 0; x < N; x++) {
   for (let y = 0; y < N; y++) {
@@ -171,8 +176,18 @@ renderer.setAnimationLoop(() => {
     // Significant incremental stretch — NEVER capped
     c.stretchZ += tidal * dt * 0.01;
 
-    /* ---- Stop when visually merged ---- */
-    if (c.r < RS * 0.98) {
+    /* ---- Gravitational redshift & time dilation fade ---- */
+    // Physical redshift factor: sqrt(1 - RS/r)
+    // As object approaches horizon, redshift increases and light becomes dimmer
+    const timeDilationFactor = Math.sqrt(Math.max(0.0001, 1 - RS / c.r));
+    
+    // Opacity fades proportionally to time dilation
+    // Object becomes invisible before reaching event horizon
+    const opacity = Math.max(0, timeDilationFactor);
+    c.mesh.material.opacity = opacity;
+    
+    /* ---- Remove when effectively crossed horizon (time dilation → 0) ---- */
+    if (timeDilationFactor < 0.01) {
       c.mesh.visible = false;
       c.alive = false;
       return;
