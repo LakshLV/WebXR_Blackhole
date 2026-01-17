@@ -1,7 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
-/* ================= XR ================= */
+/* =====================================================
+   XR SETUP
+===================================================== */
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.xr.enabled = true;
@@ -12,14 +14,18 @@ document.body.appendChild(VRButton.createButton(renderer));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
-/* ================= CAMERA ================= */
+/* =====================================================
+   CAMERA / RIG
+===================================================== */
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 800);
 const rig = new THREE.Group();
 rig.add(camera);
 scene.add(rig);
 
-/* ================= CONSTANTS ================= */
+/* =====================================================
+   CONSTANTS
+===================================================== */
 
 const G = 6.67430e-11;
 const c = 299792458;
@@ -30,12 +36,14 @@ const RS = (2 * G * BH_MASS) / (c * c);
 
 const METERS_TO_VR = 1 / 5000;
 
-/* ================= BLACK HOLE ================= */
+/* =====================================================
+   BLACK HOLE VISUAL
+===================================================== */
 
 const horizonVR = RS * METERS_TO_VR;
 
 scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(horizonVR * 0.8, 64, 64),
+  new THREE.SphereGeometry(horizonVR * 0.7, 48, 48),
   new THREE.MeshBasicMaterial({
     color: 0x00ffaa,
     wireframe: true,
@@ -44,14 +52,18 @@ scene.add(new THREE.Mesh(
   })
 ));
 
-/* ================= PLAYER ================= */
+/* =====================================================
+   PLAYER
+===================================================== */
 
 function placePlayer() {
-  rig.position.set(0, horizonVR * 1.3, horizonVR * 2.4);
+  rig.position.set(0, horizonVR * 1.1, horizonVR * 2.2);
   rig.lookAt(0, 0, 0);
 }
 
-/* ================= BODY ================= */
+/* =====================================================
+   BODY (MANY CUBES)
+===================================================== */
 
 const BODY_SIZE_METERS = 10000;
 const BODY_SIZE_VR = BODY_SIZE_METERS * METERS_TO_VR;
@@ -60,11 +72,7 @@ const N = 8;
 const cubeSizeVR = BODY_SIZE_VR / N;
 
 const cubes = [];
-const material = new THREE.MeshBasicMaterial({
-  color: 0xff4444,
-  wireframe: true,
-  transparent: true
-});
+const material = new THREE.MeshBasicMaterial({ color: 0xff5555, wireframe: true });
 
 for (let x = 0; x < N; x++) {
   for (let y = 0; y < N; y++) {
@@ -72,7 +80,7 @@ for (let x = 0; x < N; x++) {
 
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(cubeSizeVR, cubeSizeVR, cubeSizeVR),
-        material.clone()
+        material
       );
 
       scene.add(mesh);
@@ -87,30 +95,30 @@ for (let x = 0; x < N; x++) {
         mesh,
         offset,
         r: 0,
-        stretchZ: 1,
-        opacity: 1,
-        alive: true
+        alive: true,
+        stretchZ: 1   // ACCUMULATED stretch
       });
     }
   }
 }
 
-/* ================= PHYSICS ================= */
+/* =====================================================
+   PHYSICS
+===================================================== */
 
-const PHYSICS_DT = 0.001;
-const TIDAL_VISUAL_GAIN = 1e-6;
-
-function drdt_obs(r) {
-  return -c * (1 - RS / r);
+function drdt(r) {
+  return -c * Math.sqrt(RS / r);
 }
 
-function tidalRate(r) {
+function tidalGradient(r) {
   return (2 * G * BH_MASS) / Math.pow(r, 3);
 }
 
-/* ================= RESET ================= */
+/* =====================================================
+   RESET
+===================================================== */
 
-const rStart = 6 * RS;
+const rStart = 4.5 * RS;
 let running = false;
 
 function reset() {
@@ -118,22 +126,24 @@ function reset() {
     c.alive = true;
     c.r = rStart + c.offset.length() / METERS_TO_VR;
     c.stretchZ = 1;
-    c.opacity = 1;
     c.mesh.visible = true;
     c.mesh.scale.set(1, 1, 1);
-    c.mesh.material.opacity = 1;
   });
   running = true;
 }
 
-/* ================= XR EVENTS ================= */
+/* =====================================================
+   XR EVENTS
+===================================================== */
 
 renderer.xr.addEventListener('sessionstart', () => {
   placePlayer();
   reset();
 });
 
-/* ================= LOOP ================= */
+/* =====================================================
+   LOOP
+===================================================== */
 
 renderer.setAnimationLoop(() => {
 
@@ -148,34 +158,40 @@ renderer.setAnimationLoop(() => {
     if (!c.alive) return;
     alive++;
 
-    /* --- Radial motion --- */
-    c.r += drdt_obs(c.r) * PHYSICS_DT;
-    if (c.r < RS * 1.01) c.r = RS * 1.01;
+    /* ---- Proper time step ---- */
+    const dt = 0.0006 * c.r / Math.abs(drdt(c.r));
 
-    /* --- Position --- */
+    /* ---- Radial motion (asymptotic slowdown) ---- */
+    const slow = THREE.MathUtils.clamp((c.r - RS) / RS, 0.02, 1);
+    c.r += drdt(c.r) * dt * slow;
+
+    /* ---- Continuous spaghettification ---- */
+    const tidal = tidalGradient(c.r);
+
+    // Tiny incremental stretch — NEVER capped
+    c.stretchZ += tidal * dt * 0.0000006;
+
+    /* ---- Stop when visually merged ---- */
+    if (c.r < RS * 0.98) {
+      c.mesh.visible = false;
+      c.alive = false;
+      return;
+    }
+
+    /* ---- Position ---- */
     const dir = c.offset.clone().normalize();
-    c.mesh.position.copy(dir.multiplyScalar(c.r * METERS_TO_VR));
+    const pos = dir.clone().multiplyScalar(c.r * METERS_TO_VR);
+    c.mesh.position.copy(pos);
 
-    /* --- Orientation --- */
+    /* ---- Orientation ---- */
     c.mesh.lookAt(0, 0, 0);
 
-    /* --- Spaghettification near horizon only --- */
-    if (c.r < 2.2 * RS) {
-      c.stretchZ += tidalRate(c.r) * TIDAL_VISUAL_GAIN * PHYSICS_DT;
-    }
-
+    /* ---- Apply stretch inward ---- */
     c.mesh.scale.set(1, 1, c.stretchZ);
-    c.mesh.translateZ((c.stretchZ - 1) * cubeSizeVR * 0.5);
 
-    /* --- Fade & despawn --- */
-    if (c.stretchZ > 15) {
-      c.opacity -= 0.01;
-      c.mesh.material.opacity = c.opacity;
-      if (c.opacity <= 0) {
-        c.mesh.visible = false;
-        c.alive = false;
-      }
-    }
+    // Anchor far face permanently
+    const inwardShift = (c.stretchZ - 1) * cubeSizeVR * 0.5;
+    c.mesh.translateZ(+inwardShift);
   });
 
   if (alive === 0) {
