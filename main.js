@@ -168,9 +168,9 @@ renderer.setAnimationLoop(() => {
 
     // reduced strength + hard clamp
     const rawStretch = 1 + eased * (tidalStretch(c.r) / 2200);
-    const stretch = Math.min(rawStretch, 2.2);
+    const stretch = Math.min(rawStretch, 10);
 
-    c.mesh.scale.set(1, 1, stretch);
+    c.mesh.scale.set(1, 1, -stretch);
 
     // keep far face anchored
     const shift = (stretch - 1) * cubeSizeVR * 0.5;
