@@ -175,7 +175,7 @@ renderer.setAnimationLoop(() => {
 
     // Significant incremental stretch — stop adding when too close to prevent overshooting
     if (c.r > RS * 1.05) {
-      c.stretchZ += tidal * dt * 0.01;
+      c.stretchZ += tidal * dt * 0.001;
     }
 
     /* ---- Gravitational redshift & time dilation fade ---- */
@@ -194,7 +194,7 @@ renderer.setAnimationLoop(() => {
     
     /* ---- Remove when absorbed by black hole ---- */
     // Remove if: time dilation is negligible OR stretched face crossed event horizon
-    if (timeDilationFactor < 0.1 || stretchedNearestFace < RS) {
+    if (timeDilationFactor < 0.2 || stretchedNearestFace < RS) {
       c.mesh.visible = false;
       c.alive = false;
       return;
