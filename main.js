@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
-/* ================= XR SETUP ================= */
+/* ================= XR ================= */
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.xr.enabled = true;
@@ -14,7 +14,7 @@ scene.background = new THREE.Color(0x000000);
 
 /* ================= CAMERA ================= */
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 400);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 500);
 const rig = new THREE.Group();
 rig.add(camera);
 scene.add(rig);
@@ -30,7 +30,7 @@ const RS = (2 * G * BH_MASS) / (c * c);
 
 const METERS_TO_VR = 1 / 5000;
 
-/* ================= BLACK HOLE ================= */
+/* ================= BLACK HOLE VISUAL ================= */
 
 const horizonVR = RS * METERS_TO_VR;
 
@@ -40,27 +40,27 @@ scene.add(new THREE.Mesh(
     color: 0x00ffaa,
     wireframe: true,
     transparent: true,
-    opacity: 0.4
+    opacity: 0.45
   })
 ));
 
 /* ================= PLAYER ================= */
 
 function placePlayer() {
-  rig.position.set(0, horizonVR * 1.2, horizonVR * 2.2);
+  rig.position.set(0, horizonVR * 1.1, horizonVR * 2.0);
   rig.lookAt(0, 0, 0);
 }
 
-/* ================= BODY SETUP ================= */
+/* ================= BODY ================= */
 
-const bodySizeMeters = 10000;
-const bodySizeVR = bodySizeMeters * METERS_TO_VR;
+const BODY_SIZE_METERS = 10000;
+const BODY_SIZE_VR = BODY_SIZE_METERS * METERS_TO_VR;
 
-const N = 6;
-const cubeSizeVR = bodySizeVR / N;
+const N = 8; // doubled density
+const cubeSizeVR = BODY_SIZE_VR / N;
 
 const cubes = [];
-const material = new THREE.MeshBasicMaterial({ color: 0xff4444, wireframe: true });
+const material = new THREE.MeshBasicMaterial({ color: 0xff5555, wireframe: true });
 
 for (let x = 0; x < N; x++) {
   for (let y = 0; y < N; y++) {
@@ -73,7 +73,7 @@ for (let x = 0; x < N; x++) {
 
       scene.add(mesh);
 
-      const localOffset = new THREE.Vector3(
+      const offset = new THREE.Vector3(
         (x - (N - 1) / 2) * cubeSizeVR,
         (y - (N - 1) / 2) * cubeSizeVR,
         (z - (N - 1) / 2) * cubeSizeVR
@@ -81,7 +81,7 @@ for (let x = 0; x < N; x++) {
 
       cubes.push({
         mesh,
-        localOffset,
+        offset,
         r: 0,
         alive: true
       });
@@ -95,19 +95,15 @@ function drdt(r) {
   return -c * Math.sqrt(RS / r);
 }
 
-function tidalStretch(r) {
-  return (2 * G * BH_MASS / (r ** 3)) * bodySizeMeters;
-}
-
 /* ================= RESET ================= */
 
-const rStart = 4 * RS;
+const rStart = 4.5 * RS;
 let running = false;
 
 function reset() {
   cubes.forEach(c => {
     c.alive = true;
-    c.r = rStart + c.localOffset.length() / METERS_TO_VR;
+    c.r = rStart + c.offset.length() / METERS_TO_VR;
     c.mesh.visible = true;
     c.mesh.scale.set(1, 1, 1);
   });
@@ -130,56 +126,55 @@ renderer.setAnimationLoop(() => {
     return;
   }
 
-  let alive = 0;
+  let aliveCount = 0;
 
   cubes.forEach(c => {
     if (!c.alive) return;
-    alive++;
+    aliveCount++;
 
-    const dt = 0.0006 * c.r / Math.abs(drdt(c.r));
+    /* ---- Physics step ---- */
+    const dt = 0.0007 * c.r / Math.abs(drdt(c.r));
     c.r += drdt(c.r) * dt;
 
-    if (c.r <= RS * 0.78) {
+    /* ---- Slowdown near horizon ---- */
+    const slowFactor = THREE.MathUtils.clamp((c.r - RS) / RS, 0.05, 1);
+    c.r += drdt(c.r) * dt * slowFactor;
+
+    /* ---- Despawn AFTER slowdown ---- */
+    if (c.r < RS * 0.92) {
       c.mesh.visible = false;
       c.alive = false;
       return;
     }
 
-    /* Radial direction */
-    const radialDir = c.localOffset.clone().normalize();
-
-    /* Rotate cube so -Z faces BH */
-    c.mesh.lookAt(0, 0, 0);
-
-    /* Base position */
+    /* ---- Position ---- */
+    const radialDir = c.offset.clone().normalize();
     const basePos = radialDir.clone().multiplyScalar(c.r * METERS_TO_VR);
     c.mesh.position.copy(basePos);
 
-    /* -------- STRETCH CONTROL (FIX) -------- */
+    /* ---- Orientation ---- */
+    c.mesh.lookAt(0, 0, 0);
 
+    /* ---- Stretch (SLOW + INWARD ONLY) ---- */
     const proximity = THREE.MathUtils.clamp(
-      1 - (c.r - RS) / (1.1 * RS),
+      1 - (c.r - RS) / (1.8 * RS),
       0,
       1
     );
 
-    // gentler curve
-    const eased = proximity * proximity;
+    const eased = proximity ** 3;   // very smooth ramp
+    const stretch = 1 + eased * 1.4; // MUCH slower
 
-    // reduced strength + hard clamp
-    const rawStretch = 1 + eased * (tidalStretch(c.r) / 2200);
-    const stretch = Math.min(rawStretch, 10);
+    c.mesh.scale.set(1, 1, stretch);
 
-    c.mesh.scale.set(1, 1, -stretch);
-
-    // keep far face anchored
+    // Anchor far face, pull inward face
     const shift = (stretch - 1) * cubeSizeVR * 0.5;
-    c.mesh.translateZ(-shift);
+    c.mesh.translateZ(+shift);
   });
 
-  if (alive === 0) {
+  if (aliveCount === 0) {
     running = false;
-    setTimeout(reset, 1500);
+    setTimeout(reset, 1800);
   }
 
   renderer.render(scene, camera);
