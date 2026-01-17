@@ -168,8 +168,8 @@ renderer.setAnimationLoop(() => {
     /* ---- Continuous spaghettification ---- */
     const tidal = tidalGradient(c.r);
 
-    // Tiny incremental stretch — NEVER capped
-    c.stretchZ += tidal * dt * 0.0000006;
+    // Significant incremental stretch — NEVER capped
+    c.stretchZ += tidal * dt * 0.01;
 
     /* ---- Stop when visually merged ---- */
     if (c.r < RS * 0.98) {
