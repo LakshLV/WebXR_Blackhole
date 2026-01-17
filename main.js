@@ -170,13 +170,22 @@ renderer.setAnimationLoop(() => {
     const slow = THREE.MathUtils.clamp((c.r - RS) / RS, 0.02, 1);
     c.r += drdt(c.r) * dt * slow;
 
+    /* ---- Hard clamp: cube center cannot go below event horizon ---- */
+    c.r = Math.max(c.r, RS * 1.001);
+
     /* ---- Continuous spaghettification ---- */
     const tidal = tidalGradient(c.r);
 
-    // Significant incremental stretch — stop adding when too close to prevent overshooting
+    // Accumulate stretch, but cap it so nearest face never crosses event horizon
     if (c.r > RS * 1.05) {
       c.stretchZ += tidal * dt * 0.001;
     }
+    
+    // HARD LIMIT: Ensure nearest face never goes past the event horizon
+    // stretchedNearestFace = c.r - (c.stretchZ * cubeSizeVR / 2) >= RS
+    // Therefore: c.stretchZ <= 2 * (c.r - RS) / cubeSizeVR
+    const maxStretch = Math.max(1, 2 * (c.r - RS) / cubeSizeVR);
+    c.stretchZ = Math.min(c.stretchZ, maxStretch);
 
     /* ---- Gravitational redshift & time dilation fade ---- */
     // Physical redshift factor: sqrt(1 - RS/r)
