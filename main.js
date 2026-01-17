@@ -8,6 +8,7 @@ import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.xr.enabled = true;
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
@@ -24,7 +25,7 @@ rig.add(camera);
 scene.add(rig);
 
 /* =====================================================
-   CONSTANTS
+   CONSTANTS (PHYSICS — UNCHANGED)
 ===================================================== */
 
 const G = 6.67430e-11;
@@ -37,7 +38,7 @@ const RS = (2 * G * BH_MASS) / (c * c);
 const METERS_TO_VR = 1 / 5000;
 
 /* =====================================================
-   BLACK HOLE VISUAL
+   BLACK HOLE VISUAL (UNCHANGED CORE)
 ===================================================== */
 
 const horizonVR = RS * METERS_TO_VR;
@@ -53,6 +54,79 @@ scene.add(new THREE.Mesh(
 ));
 
 /* =====================================================
+   ✨ VISUAL ADDITION 1: EVENT HORIZON GLOW
+===================================================== */
+
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(horizonVR * 0.9, 48, 48),
+  new THREE.MeshBasicMaterial({
+    color: 0x00ffaa,
+    transparent: true,
+    opacity: 0.12,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide
+  })
+));
+
+/* =====================================================
+   ✨ VISUAL ADDITION 2: ACCRETION DISK (STATIC)
+===================================================== */
+
+const diskRadiusInner = horizonVR * 1.1;
+const diskRadiusOuter = horizonVR * 3.5;
+
+const disk = new THREE.Mesh(
+  new THREE.RingGeometry(diskRadiusInner, diskRadiusOuter, 128),
+  new THREE.MeshBasicMaterial({
+    color: 0xffaa55,
+    transparent: true,
+    opacity: 0.25,
+    side: THREE.DoubleSide
+  })
+);
+
+disk.rotation.x = Math.PI / 2;
+scene.add(disk);
+
+/* =====================================================
+   ✨ VISUAL ADDITION 3: STARFIELD
+===================================================== */
+
+const starCount = 2000;
+const starGeometry = new THREE.BufferGeometry();
+const starPositions = [];
+
+const STAR_RADIUS = 600; // safely beyond everything
+
+for (let i = 0; i < starCount; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const r = STAR_RADIUS;
+
+  starPositions.push(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
+  );
+}
+
+starGeometry.setAttribute(
+  'position',
+  new THREE.Float32BufferAttribute(starPositions, 3)
+);
+
+const stars = new THREE.Points(
+  starGeometry,
+  new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.6,
+    sizeAttenuation: true
+  })
+);
+
+scene.add(stars);
+
+/* =====================================================
    PLAYER
 ===================================================== */
 
@@ -62,7 +136,7 @@ function placePlayer() {
 }
 
 /* =====================================================
-   BODY (MANY CUBES)
+   BODY (UNCHANGED)
 ===================================================== */
 
 const BODY_SIZE_METERS = 10000;
@@ -72,8 +146,8 @@ const N = 8;
 const cubeSizeVR = BODY_SIZE_VR / N;
 
 const cubes = [];
-const material = new THREE.MeshBasicMaterial({ 
-  color: 0xff5555, 
+const material = new THREE.MeshBasicMaterial({
+  color: 0xff5555,
   wireframe: true,
   transparent: true,
   opacity: 1.0
@@ -101,14 +175,14 @@ for (let x = 0; x < N; x++) {
         offset,
         r: 0,
         alive: true,
-        stretchZ: 1   // ACCUMULATED stretch
+        stretchZ: 1
       });
     }
   }
 }
 
 /* =====================================================
-   PHYSICS
+   PHYSICS (UNCHANGED)
 ===================================================== */
 
 function drdt(r) {
@@ -147,7 +221,7 @@ renderer.xr.addEventListener('sessionstart', () => {
 });
 
 /* =====================================================
-   LOOP
+   LOOP (PHYSICS + VISUALS)
 ===================================================== */
 
 renderer.setAnimationLoop(() => {
@@ -163,64 +237,36 @@ renderer.setAnimationLoop(() => {
     if (!c.alive) return;
     alive++;
 
-    /* ---- Proper time step ---- */
     const dt = 0.0006 * c.r / Math.abs(drdt(c.r));
-
-    /* ---- Radial motion (asymptotic slowdown) ---- */
     const slow = THREE.MathUtils.clamp((c.r - RS) / RS, 0.02, 1);
     c.r += drdt(c.r) * dt * slow;
-
-    /* ---- Hard clamp: cube center cannot go below event horizon ---- */
     c.r = Math.max(c.r, RS * 1.001);
 
-    /* ---- Continuous spaghettification ---- */
     const tidal = tidalGradient(c.r);
-
-    // Accumulate stretch, but cap it so nearest face never crosses event horizon
     if (c.r > RS * 1.05) {
       c.stretchZ += tidal * dt * 0.001;
     }
-    
-    // HARD LIMIT: Ensure nearest face never goes past the event horizon
-    // stretchedNearestFace = c.r - (c.stretchZ * cubeSizeVR / 2) >= RS
-    // Therefore: c.stretchZ <= 2 * (c.r - RS) / cubeSizeVR
+
     const maxStretch = Math.max(1, 2 * (c.r - RS) / cubeSizeVR);
     c.stretchZ = Math.min(c.stretchZ, maxStretch);
 
-    /* ---- Gravitational redshift & time dilation fade ---- */
-    // Physical redshift factor: sqrt(1 - RS/r)
-    // As object approaches horizon, redshift increases and light becomes dimmer
     const timeDilationFactor = Math.sqrt(Math.max(0.0001, 1 - RS / c.r));
-    
-    // Opacity fades proportionally to time dilation
-    // Object becomes invisible before reaching event horizon
-    const opacity = Math.max(0, timeDilationFactor);
-    c.mesh.material.opacity = opacity;
-    
-    /* ---- Check if stretched cube's nearest face crossed the horizon ---- */
-    // The cube's nearest face (when stretched) is at distance r - (stretchZ * cubeSizeVR / 2)
+    c.mesh.material.opacity = timeDilationFactor;
+
     const stretchedNearestFace = c.r - (c.stretchZ * cubeSizeVR * 0.5);
-    
-    /* ---- Remove when absorbed by black hole ---- */
-    // Remove if: time dilation is negligible OR stretched face crossed event horizon
     if (timeDilationFactor < 0.2 || stretchedNearestFace < RS) {
       c.mesh.visible = false;
       c.alive = false;
       return;
     }
 
-    /* ---- Position ---- */
     const dir = c.offset.clone().normalize();
     const pos = dir.clone().multiplyScalar(c.r * METERS_TO_VR);
     c.mesh.position.copy(pos);
 
-    /* ---- Orientation ---- */
     c.mesh.lookAt(0, 0, 0);
-
-    /* ---- Apply stretch inward ---- */
     c.mesh.scale.set(1, 1, c.stretchZ);
 
-    // Anchor far face permanently
     const inwardShift = (c.stretchZ - 1) * cubeSizeVR * 0.5;
     c.mesh.translateZ(+inwardShift);
   });
@@ -232,4 +278,3 @@ renderer.setAnimationLoop(() => {
 
   renderer.render(scene, camera);
 });
- 
